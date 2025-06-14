@@ -1690,6 +1690,241 @@ pub(crate) mod tests {
             block1.kernel.header.timestamp = future_time5;
             assert!(!block1.is_valid(&genesis_block, now, network).await);
         }
+
+        #[traced_test]
+        #[apply(shared_tokio_runtime)]
+        async fn invalid_block_height() {
+            let network = Network::RegTest;
+            let genesis_block = Block::genesis(network);
+            let now = genesis_block.kernel.header.timestamp + Timestamp::hours(1);
+            let mut rng: StdRng = SeedableRng::seed_from_u64(42);
+            
+            let mut block = fake_valid_successor_for_tests(
+                &genesis_block,
+                now,
+                rng.random(),
+                network,
+            ).await;
+            
+            // Test: Block height is not previous plus one
+            block.kernel.header.height = BlockHeight::new(BFieldElement::new(5)); // Should be 1
+            assert!(!block.is_valid(&genesis_block, now, network).await);
+            
+            // Test: Block height is zero when it should be 1
+            block.kernel.header.height = BlockHeight::new(BFieldElement::new(0));
+            assert!(!block.is_valid(&genesis_block, now, network).await);
+        }
+
+        #[traced_test]
+        #[apply(shared_tokio_runtime)]
+        async fn invalid_prev_block_digest() {
+            let network = Network::RegTest;
+            let genesis_block = Block::genesis(network);
+            let now = genesis_block.kernel.header.timestamp + Timestamp::hours(1);
+            let mut rng: StdRng = SeedableRng::seed_from_u64(43);
+            
+            let mut block = fake_valid_successor_for_tests(
+                &genesis_block,
+                now,
+                rng.random(),
+                network,
+            ).await;
+            
+            // Test: Block header points to wrong previous block
+            block.kernel.header.prev_block_digest = Digest::default();
+            assert!(!block.is_valid(&genesis_block, now, network).await);
+            
+            // Test: Block header points to random digest
+            block.kernel.header.prev_block_digest = rng.random();
+            assert!(!block.is_valid(&genesis_block, now, network).await);
+        }
+
+        #[traced_test]
+        #[apply(shared_tokio_runtime)]
+        async fn invalid_block_mmr_update() {
+            let network = Network::RegTest;
+            let genesis_block = Block::genesis(network);
+            let now = genesis_block.kernel.header.timestamp + Timestamp::hours(1);
+            let mut rng: StdRng = SeedableRng::seed_from_u64(44);
+            
+            let mut block = fake_valid_successor_for_tests(
+                &genesis_block,
+                now,
+                rng.random(),
+                network,
+            ).await;
+            
+            // Test: Block MMR is not updated correctly
+            block.kernel.body.block_mmr_accumulator = MmrAccumulator::new(vec![]);
+            assert!(!block.is_valid(&genesis_block, now, network).await);
+        }
+
+        #[traced_test]
+        #[apply(shared_tokio_runtime)]
+        async fn invalid_minimum_block_time() {
+            let network = Network::RegTest;
+            let genesis_block = Block::genesis(network);
+            let mut rng: StdRng = SeedableRng::seed_from_u64(45);
+            
+            // Test: Block timestamp is not greater than previous + minimum block time
+            let too_early = genesis_block.kernel.header.timestamp + Timestamp::seconds(1);
+            let mut block = fake_valid_successor_for_tests(
+                &genesis_block,
+                too_early,
+                rng.random(),
+                network,
+            ).await;
+            
+            // Force the timestamp to be too early
+            block.kernel.header.timestamp = too_early;
+            assert!(!block.is_valid(&genesis_block, too_early + Timestamp::hours(1), network).await);
+        }
+
+        #[traced_test]
+        #[apply(shared_tokio_runtime)]
+        async fn invalid_transaction_timestamp() {
+            let network = Network::RegTest;
+            let genesis_block = Block::genesis(network);
+            let now = genesis_block.kernel.header.timestamp + Timestamp::hours(1);
+            let mut rng: StdRng = SeedableRng::seed_from_u64(46);
+            
+            let mut block = fake_valid_successor_for_tests(
+                &genesis_block,
+                now,
+                rng.random(),
+                network,
+            ).await;
+            
+            // Test: Transaction timestamp > block timestamp
+            let future_tx_time = now + Timestamp::hours(1);
+            block.kernel.body.transaction_kernel.timestamp = future_tx_time;
+            assert!(!block.is_valid(&genesis_block, now, network).await);
+        }
+
+        #[traced_test]
+        #[apply(shared_tokio_runtime)]
+        async fn invalid_coinbase_too_big() {
+            let network = Network::RegTest;
+            let genesis_block = Block::genesis(network);
+            let now = genesis_block.kernel.header.timestamp + Timestamp::hours(1);
+            let mut rng: StdRng = SeedableRng::seed_from_u64(47);
+            
+            let mut block = fake_valid_successor_for_tests(
+                &genesis_block,
+                now,
+                rng.random(),
+                network,
+            ).await;
+            
+            // Test: Coinbase exceeds block subsidy
+            let block_subsidy = Block::block_subsidy(block.kernel.header.height);
+            let excessive_coinbase = block_subsidy + NativeCurrencyAmount::coins(1);
+            block.kernel.body.transaction_kernel.coinbase = Some(excessive_coinbase);
+            assert!(!block.is_valid(&genesis_block, now, network).await);
+        }
+
+        #[traced_test]
+        #[apply(shared_tokio_runtime)]
+        async fn invalid_negative_fee() {
+            let network = Network::RegTest;
+            let genesis_block = Block::genesis(network);
+            let now = genesis_block.kernel.header.timestamp + Timestamp::hours(1);
+            let mut rng: StdRng = SeedableRng::seed_from_u64(48);
+            
+            let mut block = fake_valid_successor_for_tests(
+                &genesis_block,
+                now,
+                rng.random(),
+                network,
+            ).await;
+            
+            // Test: Negative fee
+            block.kernel.body.transaction_kernel.fee = -NativeCurrencyAmount::coins(1);
+            assert!(!block.is_valid(&genesis_block, now, network).await);
+        }
+
+        #[traced_test]
+        #[apply(shared_tokio_runtime)]
+        async fn invalid_cumulative_proof_of_work() {
+            let network = Network::RegTest;
+            let genesis_block = Block::genesis(network);
+            let now = genesis_block.kernel.header.timestamp + Timestamp::hours(1);
+            let mut rng: StdRng = SeedableRng::seed_from_u64(49);
+            
+            let mut block = fake_valid_successor_for_tests(
+                &genesis_block,
+                now,
+                rng.random(),
+                network,
+            ).await;
+            
+            // Test: Cumulative proof of work is not updated correctly
+            block.kernel.header.cumulative_proof_of_work = ProofOfWork::zero();
+            assert!(!block.is_valid(&genesis_block, now, network).await);
+            
+            // Test: Cumulative proof of work is too high
+            let wrong_pow = genesis_block.header().cumulative_proof_of_work + 
+                           genesis_block.header().difficulty + 
+                           Difficulty::new(BFieldElement::new(1000));
+            block.kernel.header.cumulative_proof_of_work = wrong_pow;
+            assert!(!block.is_valid(&genesis_block, now, network).await);
+        }
+
+        #[cfg(test)]
+        mod proptest_negative_validation {
+            use super::*;
+            use proptest::prelude::*;
+            use test_strategy::proptest;
+
+            #[proptest]
+            #[apply(shared_tokio_runtime)]
+            async fn invalid_block_height_proptest(
+                #[strategy(2u64..1000u64)] wrong_height: u64
+            ) {
+                let network = Network::RegTest;
+                let genesis_block = Block::genesis(network);
+                let now = genesis_block.kernel.header.timestamp + Timestamp::hours(1);
+                let mut rng: StdRng = SeedableRng::seed_from_u64(100);
+                
+                let mut block = fake_valid_successor_for_tests(
+                    &genesis_block,
+                    now,
+                    rng.random(),
+                    network,
+                ).await;
+                
+                // Test: Block height is not previous plus one (should be 1, but we set it to wrong_height)
+                block.kernel.header.height = BlockHeight::new(BFieldElement::new(wrong_height));
+                prop_assert!(!block.is_valid(&genesis_block, now, network).await);
+            }
+
+            #[proptest]
+            #[apply(shared_tokio_runtime)]
+            async fn invalid_future_timestamp_proptest(
+                #[strategy(1u64..=86400u64 * 365)] future_seconds: u64
+            ) {
+                let network = Network::RegTest;
+                let genesis_block = Block::genesis(network);
+                let now = genesis_block.kernel.header.timestamp + Timestamp::hours(1);
+                let mut rng: StdRng = SeedableRng::seed_from_u64(101);
+                
+                let mut block = fake_valid_successor_for_tests(
+                    &genesis_block,
+                    now,
+                    rng.random(),
+                    network,
+                ).await;
+                
+                // Test: Block timestamp too far in the future (more than 5 minutes)
+                let future_time = now + Timestamp::seconds(future_seconds);
+                block.kernel.header.timestamp = future_time;
+                
+                // Only assert invalid if it's more than 5 minutes in the future
+                if future_seconds > 300 {
+                    prop_assert!(!block.is_valid(&genesis_block, now, network).await);
+                }
+            }
+        }
     }
 
     /// This module has tests that verify a block's digest
