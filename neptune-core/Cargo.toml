@@ -98,6 +98,22 @@ tokio = { version = "1.41", features = ["full", "tracing"] }
 tokio-serde = { version = "0.8", features = ["bincode", "json"] }
 tokio-util = { version = "0.7", features = ["codec", "rt"] }
 tracing = "0.1"
+
+# libp2p dependencies for peer discovery
+libp2p = { version = "0.54", features = [
+    "kad",
+    "mdns",
+    "noise",
+    "tcp",
+    "tokio",
+    "yamux",
+    "macros",
+    "identify",
+] }
+array-bytes = "6.2"
+futures-timer = "3.0"
+ip_network = "0.4"
+linked_hash_set = "0.1"
 tracing-subscriber = { version = "0.3", features = ["std", "env-filter", "time", "fmt"] }
 tracing-test = "0.2"
 zeroize = "1.8.1"

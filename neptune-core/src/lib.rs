@@ -27,6 +27,11 @@ pub mod api;
 pub mod config_models;
 pub mod connect_to_peers;
 pub mod database;
+pub mod discovery;
+pub mod discovery_integration;
+
+#[cfg(test)]
+pub mod discovery_example;
 pub mod job_queue;
 pub mod locks;
 pub mod macros;
