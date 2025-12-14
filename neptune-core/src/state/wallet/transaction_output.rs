@@ -35,8 +35,9 @@ pub struct TxOutput {
     receiver_digest: Digest,
     notification_method: UtxoNotificationMethod,
 
-    /// Indicates if this client can unlock the UTXO
+    /// Indicates if this client can unlock the UTXO.
     owned: bool,
+    
     is_change: bool,
 }
 
@@ -447,7 +448,7 @@ impl TxOutput {
     }
 }
 
-/// Represents a list of [TxOutput]
+/// represents a list of [`TxOutput`]
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct TxOutputList(Vec<TxOutput>);
 
@@ -647,9 +648,10 @@ mod tests {
     use super::*;
     use crate::application::config::cli_args;
     use crate::application::config::network::Network;
+    use crate::protocol::consensus::transaction::lock_script::DigestLockScript;
     use crate::protocol::consensus::transaction::utxo::Coin;
     use crate::protocol::consensus::type_scripts::native_currency_amount::NativeCurrencyAmount;
-    use crate::state::wallet::address::generation_address::GenerationReceivingAddress;
+    use crate::state::wallet::address::pokolen_address::PokolenReceivingAddress;
     use crate::state::wallet::address::KeyType;
     use crate::state::wallet::utxo_notification::UtxoNotificationMedium;
     use crate::state::wallet::utxo_notification::UtxoNotificationMethod;
@@ -704,7 +706,7 @@ mod tests {
         // generate a new receiving address that is not from our wallet.
         let mut rng = rand::rng();
         let seed: Digest = rng.random();
-        let address = GenerationReceivingAddress::derive_from_seed(seed);
+        let address = PokolenReceivingAddress::derive_from_seed(seed);
 
         let amount = NativeCurrencyAmount::one_nau();
         let utxo = Utxo::new_native_currency(address.lock_script().hash(), amount);
@@ -755,7 +757,7 @@ mod tests {
             .lock_guard_mut()
             .await
             .wallet_state
-            .next_unused_spending_key(KeyType::Generation)
+            .next_unused_spending_key(KeyType::Pokolen)
             .await;
         let address_gen = spending_key_gen.to_address();
 
@@ -824,10 +826,10 @@ mod tests {
         #[strategy(arb())] no_method: bool,
         #[strategy(arb())] owned: bool,
         #[strategy(arb())] is_change: bool,
-        #[strategy(arb())] lock_script_hash: Digest,
+        #[strategy(arb())] lock_script_hash: DigestLockScript,
         #[strategy(1755871369000_u64..2755871369000)] unix_timestamp: u64,
     ) {
-        let address = GenerationReceivingAddress::derive_from_seed(address_seed);
+        let address = PokolenReceivingAddress::derive_from_seed(address_seed);
         let notification_method = if no_method {
             UtxoNotificationMethod::None
         } else {

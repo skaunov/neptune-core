@@ -1,5 +1,4 @@
 use std::fmt::Display;
-use std::hash::Hash as StdHash;
 use std::hash::Hasher as StdHasher;
 
 #[cfg(any(test, feature = "arbitrary-impls"))]
@@ -7,9 +6,6 @@ use arbitrary::Arbitrary;
 use get_size2::GetSize;
 use itertools::Itertools;
 use num_traits::Zero;
-use rand::distr::Distribution;
-use rand::distr::StandardUniform;
-use rand::Rng;
 use serde::Deserialize;
 use serde::Serialize;
 use tasm_lib::prelude::TasmObject;
@@ -17,6 +13,7 @@ use tasm_lib::twenty_first::math::b_field_element::BFieldElement;
 use tasm_lib::twenty_first::math::bfield_codec::BFieldCodec;
 use tasm_lib::twenty_first::tip5::digest::Digest;
 
+use crate::protocol::consensus::transaction::lock_script::DigestLockScript;
 use crate::protocol::consensus::type_scripts::known_type_scripts::is_known_type_script_with_valid_state;
 use crate::protocol::consensus::type_scripts::native_currency::NativeCurrency;
 use crate::protocol::consensus::type_scripts::native_currency_amount::NativeCurrencyAmount;
@@ -69,7 +66,7 @@ impl Coin {
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, BFieldCodec, TasmObject)]
 pub struct Utxo {
-    lock_script_hash: Digest,
+    lock_script_hash: DigestLockScript,
     coins: Vec<Coin>,
 }
 
@@ -79,14 +76,15 @@ impl Display for Utxo {
             f,
             "{}",
             self.coins
-                .iter()
-                .enumerate()
-                .map(|(i, coin)| format!("coin {i}: {coin}"))
-                .join("; ")
+            .iter()
+            .enumerate()
+            .map(|(i, coin)| format!("coin {i}: {coin}"))
+            .join("; ")
         )
     }
 }
 
+// #[cfg(any(test, feature = "arbitrary-impls"))]
 impl GetSize for Utxo {
     fn get_stack_size() -> usize {
         size_of::<Self>()
@@ -104,7 +102,7 @@ impl GetSize for Utxo {
 }
 
 impl Utxo {
-    pub fn new(lock_script_hash: Digest, coins: Vec<Coin>) -> Self {
+    pub fn new(lock_script_hash: DigestLockScript, coins: Vec<Coin>) -> Self {
         Self {
             lock_script_hash,
             coins,
@@ -115,11 +113,11 @@ impl Utxo {
         &self.coins
     }
 
-    pub fn lock_script_hash(&self) -> Digest {
+    pub fn lock_script_hash(&self) -> DigestLockScript {
         self.lock_script_hash
     }
 
-    pub fn new_native_currency(lock_script_hash: Digest, amount: NativeCurrencyAmount) -> Self {
+    pub fn new_native_currency(lock_script_hash: DigestLockScript, amount: NativeCurrencyAmount) -> Self {
         Self {
             coins: vec![Coin::new_native_currency(amount)],
             lock_script_hash,
@@ -154,7 +152,7 @@ impl Utxo {
     /// without duplicates.
     ///
     /// Always includes [`NativeCurrency`].
-    pub(crate) fn type_script_hashes<'a, I: Iterator<Item = &'a Self>>(utxos: I) -> Vec<Digest> {
+    pub(crate) fn typescripts<'a, I: Iterator<Item = &'a Self>>(utxos: I) -> Vec<Digest> {
         vec![NativeCurrency.hash()]
             .into_iter()
             .chain(
@@ -255,20 +253,9 @@ impl Utxo {
 }
 
 /// Make `Utxo` hashable with `StdHash` for using it in `HashMap`.
-///
-/// The Clippy warning is safe to suppress, because we do not violate the invariant: k1 == k2 => hash(k1) == hash(k2).
-impl StdHash for Utxo {
+impl std::hash::Hash for Utxo {
     fn hash<H: StdHasher>(&self, state: &mut H) {
-        StdHash::hash(&self.encode(), state);
-    }
-}
-
-impl Distribution<Utxo> for StandardUniform {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Utxo {
-        Utxo::new(
-            rng.random(),
-            NativeCurrencyAmount::coins(rng.next_u32() % 42000000).to_native_coins(),
-        )
+        std::hash::Hash::hash(&self.encode(), state);
     }
 }
 
@@ -276,19 +263,27 @@ impl Distribution<Utxo> for StandardUniform {
 pub mod neptune_arbitrary {
     use super::*;
 
+    impl rand::distr::Distribution<Utxo> for rand::distr::StandardUniform {
+        fn sample<R: rand::Rng + ?Sized>(&self, rng: &mut R) -> Utxo {
+            Utxo::new(
+                rng.random(),
+                NativeCurrencyAmount::coins(rng.next_u32() % 42000000).to_native_coins(),
+            )
+        }
+    }
+
     impl<'a> Arbitrary<'a> for Utxo {
         /// Produce a strategy for "arbitrary" UTXOs where "arbitrary" means:
-        ///  - lock script corresponding to an arbitrary generation address
+        ///  - lock script corresponding to an arbitrary generation address;
         ///  - one coin of type NativeCurrency and arbitrary, non-negative amount.
         fn arbitrary(u: &mut ::arbitrary::Unstructured<'a>) -> ::arbitrary::Result<Self> {
-            let lock_script_hash: Digest = Digest::arbitrary(u)?;
             let type_script_hash = NativeCurrency.hash();
             let amount = NativeCurrencyAmount::arbitrary(u)?.abs();
             let coins = vec![Coin {
                 type_script_hash,
                 state: amount.encode(),
             }];
-            Ok(Utxo::new(lock_script_hash, coins))
+            Ok(Utxo::new(DigestLockScript(Digest::arbitrary(u)?), coins))
         }
     }
 }
@@ -322,7 +317,7 @@ mod tests {
 
         pub(crate) fn empty_dummy() -> Self {
             Self {
-                lock_script_hash: Digest::default(),
+                lock_script_hash: DigestLockScript(Digest::default()),
                 coins: vec![],
             }
         }
@@ -333,7 +328,7 @@ mod tests {
                 state: vec![],
             };
             Self {
-                lock_script_hash: Digest::default(),
+                lock_script_hash: DigestLockScript(Digest::default()),
                 coins: vec![dummy_coin.clone(); num_coins],
             }
         }
@@ -381,11 +376,11 @@ mod tests {
 
     #[test]
     fn always_include_native_currency_type_script() {
-        assert!(Utxo::type_script_hashes([].iter()).contains(&NativeCurrency.hash()));
+        assert!(Utxo::typescripts([].iter()).contains(&NativeCurrency.hash()));
         let utxo = Utxo {
-            lock_script_hash: Digest::default(),
+            lock_script_hash: DigestLockScript(Digest::default()),
             coins: vec![],
         };
-        assert!(Utxo::type_script_hashes([utxo].iter()).contains(&NativeCurrency.hash()));
+        assert!(Utxo::typescripts([utxo].iter()).contains(&NativeCurrency.hash()));
     }
 }

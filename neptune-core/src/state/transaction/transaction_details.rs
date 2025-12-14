@@ -40,7 +40,8 @@ use crate::util_types::mutator_set::mutator_set_accumulator::MutatorSetAccumulat
 /// Transaction = TransactionKernel + TransactionProof
 /// ```
 ///
-/// security: This type contains secrets (keys) and should never be shared.
+/// # security
+/// This type contains secrets (keys) and should never be shared.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TransactionDetails {
     pub tx_inputs: TxInputs,
@@ -48,6 +49,7 @@ pub struct TransactionDetails {
 
     /// announcements *excluding* encrypted UTXO notifications.
     extra_announcements: Vec<Announcement>,
+
     pub fee: NativeCurrencyAmount,
     pub coinbase: Option<NativeCurrencyAmount>,
     pub timestamp: Timestamp,
@@ -55,7 +57,7 @@ pub struct TransactionDetails {
     pub network: Network,
 }
 
-// so we can emit a detailed log msg when sending a transaction.
+// so we can emit a detailed log msg when sending a transaction
 impl Display for TransactionDetails {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
@@ -79,7 +81,7 @@ impl Display for TransactionDetails {
             self.tx_inputs.total_native_coins(),
             self.tx_outputs.total_native_coins(),
             self.fee,
-            // render Some(0) and None differently
+            // render `Some(0)` and `None` differently
             self.coinbase
                 .map(|nca| format!("{nca}"))
                 .unwrap_or("-".to_string()),

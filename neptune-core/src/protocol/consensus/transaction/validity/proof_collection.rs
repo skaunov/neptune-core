@@ -40,7 +40,7 @@ pub struct ProofCollection {
     pub kernel_to_outputs: Proof,
     pub collect_type_scripts: Proof,
     pub type_scripts_halt: Vec<Proof>,
-    pub lock_script_hashes: Vec<Digest>,
+    pub lock_script_hashes: Vec<crate::protocol::consensus::transaction::lock_script::DigestLockScript>,
     pub type_script_hashes: Vec<Digest>,
     pub kernel_mast_hash: Digest,
     pub salted_inputs_hash: Digest,
@@ -67,18 +67,11 @@ impl ProofCollection {
         KernelToOutputsWitness,
         CollectTypeScriptsWitness,
     ) {
-        // collect witnesses
-        let removal_records_integrity_witness =
-            RemovalRecordsIntegrityWitness::from(primitive_witness);
-        let collect_lock_scripts_witness = CollectLockScriptsWitness::from(primitive_witness);
-        let kernel_to_outputs_witness = KernelToOutputsWitness::from(primitive_witness);
-        let collect_type_scripts_witness = CollectTypeScriptsWitness::from(primitive_witness);
-
         (
-            removal_records_integrity_witness,
-            collect_lock_scripts_witness,
-            kernel_to_outputs_witness,
-            collect_type_scripts_witness,
+            RemovalRecordsIntegrityWitness::from(primitive_witness),
+            CollectLockScriptsWitness::from(primitive_witness),
+            KernelToOutputsWitness::from(primitive_witness),
+            CollectTypeScriptsWitness::from(primitive_witness),
         )
     }
 
@@ -95,23 +88,11 @@ impl ProofCollection {
         ) = Self::extract_specific_witnesses(primitive_witness);
 
         let txk_mast_hash = primitive_witness.kernel.mast_hash();
-        let txk_mast_hash_as_input = PublicInput::new(txk_mast_hash.reversed().values().to_vec());
         let salted_inputs_hash = Tip5::hash(&primitive_witness.input_utxos);
         let salted_outputs_hash = Tip5::hash(&primitive_witness.output_utxos);
         debug!("proving, txk hash: {}", txk_mast_hash);
         debug!("proving, salted inputs hash: {}", salted_inputs_hash);
         debug!("proving, salted outputs hash: {}", salted_outputs_hash);
-
-        // prove
-        debug!("proving RemovalRecordsIntegrity");
-        let removal_records_integrity = RemovalRecordsIntegrity
-            .prove(
-                removal_records_integrity_witness.claim(),
-                removal_records_integrity_witness.nondeterminism(),
-                triton_vm_job_queue.clone(),
-                proof_job_options.clone(),
-            )
-            .await?;
 
         debug!("proving CollectLockScripts");
         let collect_lock_scripts = CollectLockScripts
@@ -149,11 +130,10 @@ impl ProofCollection {
             lock_scripts_halt.push(
                 lock_script_and_witness
                     .prove(
-                        txk_mast_hash_as_input.clone(),
+                        PublicInput::new(txk_mast_hash.reversed().values().to_vec()),
                         triton_vm_job_queue.clone(),
                         proof_job_options.clone(),
-                    )
-                    .await?,
+                    ).await?,
             );
         }
 
@@ -172,8 +152,7 @@ impl ProofCollection {
                     salted_outputs_hash,
                     triton_vm_job_queue.clone(),
                     proof_job_options.clone(),
-                )
-                .await?,
+                ).await?,
             );
         }
         info!("done proving proof collection");
@@ -190,12 +169,17 @@ impl ProofCollection {
             .map(|tsaw| tsaw.program.hash())
             .collect_vec();
 
-        let merge_bit_mast_path = primitive_witness
-            .kernel
-            .mast_path(TransactionKernelField::MergeBit);
-
         Ok(ProofCollection {
-            removal_records_integrity,
+            removal_records_integrity: {
+                debug!("proving `RemovalRecordsIntegrity`");
+                RemovalRecordsIntegrity
+                    .prove(
+                        removal_records_integrity_witness.claim(),
+                        removal_records_integrity_witness.nondeterminism(),
+                        triton_vm_job_queue.clone(),
+                        proof_job_options.clone(),
+                    ).await?
+            },
             collect_lock_scripts,
             lock_scripts_halt,
             kernel_to_outputs,
@@ -206,11 +190,13 @@ impl ProofCollection {
             kernel_mast_hash: txk_mast_hash,
             salted_inputs_hash,
             salted_outputs_hash,
-            merge_bit_mast_path,
+            merge_bit_mast_path: primitive_witness
+                .kernel
+                .mast_path(TransactionKernelField::MergeBit),
         })
     }
 
-    // produce ProofCollection with mock proofs
+    /// produce `ProofCollection` with mock proofs
     pub(crate) fn produce_mock(primitive_witness: &PrimitiveWitness, valid_mock: bool) -> Self {
         let txk_mast_hash = primitive_witness.kernel.mast_hash();
         let salted_inputs_hash = Tip5::hash(&primitive_witness.input_utxos);
@@ -296,10 +282,8 @@ impl ProofCollection {
         let collect_lock_scripts_claim = Claim::about_program(&CollectLockScripts.program())
             .with_input(self.salted_inputs_hash.reversed().values())
             .with_output(
-                self.lock_script_hashes
-                    .iter()
-                    .flat_map(|d| d.values())
-                    .collect(),
+                self.lock_script_hashes.iter()
+                .flat_map(|d| d.0.values()).collect(),
             );
         let collect_type_scripts_claim = Claim::about_program(&CollectTypeScripts.program())
             .with_input(
@@ -315,11 +299,8 @@ impl ProofCollection {
                     .collect_vec(),
             );
         trace!("collect_type_scripts_claim:\n{collect_type_scripts_claim:?}\n\n");
-        let lock_script_claims = self
-            .lock_script_hashes
-            .iter()
-            .map(|&lsh| Claim::new(lsh).with_input(self.kernel_mast_hash.reversed().values()))
-            .collect_vec();
+        let lock_script_claims = self.lock_script_hashes.iter()
+        .map(|&lsh| Claim::new(lsh.0).with_input(self.kernel_mast_hash.reversed().values())).collect_vec();
         let type_script_claims = self
             .type_script_hashes
             .iter()
@@ -403,10 +384,10 @@ impl ProofCollection {
         let mut lock_script_hashes_as_output = vec![];
         let mut i: usize = 0;
         while i < self.lock_script_hashes.len() {
-            let lock_script_hash: Digest = self.lock_script_hashes[i];
+            let lock_script_hash = self.lock_script_hashes[i];
             let mut j: usize = 0;
             while j < Digest::LEN {
-                lock_script_hashes_as_output.push(lock_script_hash.values()[j]);
+                lock_script_hashes_as_output.push(lock_script_hash.0.values()[j]);
                 j += 1;
             }
             i += 1;
@@ -441,7 +422,7 @@ impl ProofCollection {
         let mut claims = vec![];
         let mut i = 0;
         while i < self.lock_script_hashes.len() {
-            let claim = Claim::new(self.lock_script_hashes[i])
+            let claim = Claim::new(self.lock_script_hashes[i].0)
                 .with_input(self.kernel_mast_hash.reversed().values());
             claims.push(claim);
 
@@ -485,7 +466,7 @@ pub mod tests {
     use crate::api::export::NativeCurrencyAmount;
     use crate::api::export::NeptuneProof;
     use crate::application::triton_vm_job_queue::vm_job_queue;
-    use crate::protocol::proof_abstractions::tasm::program::spec::TritonProgramSpecification;
+    use crate::protocol::proof_abstractions::tasm::program::tests::TritonProgramSpecification;
     use crate::tests::shared_tokio_runtime;
 
     impl ProofCollection {

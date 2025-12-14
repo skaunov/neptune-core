@@ -1,6 +1,3 @@
-use rand::distr::Distribution;
-use rand::distr::StandardUniform;
-use rand::Rng;
 use tasm_lib::prelude::Digest;
 use tasm_lib::prelude::Tip5;
 use tasm_lib::triton_vm::prelude::BFieldCodec;
@@ -14,7 +11,7 @@ use crate::util_types::mutator_set::removal_record::absolute_index_set::Absolute
 /// The key data from a transaction input that enables a transparent audit.
 ///
 /// Specifically, this struct contains enough data to re-derive the
-/// `AbsoluteIndexSet` without the target chunks. This information uniquely
+/// [`AbsoluteIndexSet`] without the target chunks. This information uniquely
 /// identifies the UTXO. Furthermore, it contains the UTXO in plaintext, which
 /// in particular lays bare the amounts if native currency coins are involved.
 ///
@@ -73,8 +70,9 @@ impl TransparentInput {
     }
 }
 
-impl Distribution<TransparentInput> for StandardUniform {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> TransparentInput {
+#[cfg(any(test, feature = "arbitrary-impls"))]
+impl rand::distr::Distribution<TransparentInput> for rand::distr::StandardUniform {
+    fn sample<R: rand::Rng + ?Sized>(&self, rng: &mut R) -> TransparentInput {
         let utxo = rng.random::<Utxo>();
         let aocl_leaf_index = rng.random_range(0..(u64::MAX >> 1));
         let sender_randomness = rng.random();

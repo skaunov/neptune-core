@@ -25,6 +25,7 @@ use crate::application::config::network::Network;
 use crate::protocol::consensus::block::guesser_receiver_data::GuesserReceiverData;
 use crate::protocol::consensus::block::pow::Pow;
 use crate::protocol::consensus::consensus_rule_set::ConsensusRuleSet;
+use crate::protocol::consensus::transaction::lock_script::DigestLockScript;
 use crate::protocol::proof_abstractions::mast_hash::HasDiscriminant;
 use crate::protocol::proof_abstractions::mast_hash::MastHash;
 use crate::protocol::proof_abstractions::timestamp::Timestamp;
@@ -42,12 +43,12 @@ pub struct BlockHeader {
     pub height: BlockHeight,
     pub prev_block_digest: Digest,
 
-    /// Time since unix epoch, in milliseconds
+    /// Time since unix epoch, in milliseconds.
     pub timestamp: Timestamp,
 
     pub pow: BlockPow,
 
-    /// Total proof-of-work accumulated by this chain
+    /// Total proof-of-work accumulated by this chain.
     pub cumulative_proof_of_work: ProofOfWork,
 
     /// The difficulty for the *next* block. Unit: expected # hashes
@@ -76,7 +77,7 @@ impl Display for BlockHeader {
             self.difficulty,
             self.version,
             self.guesser_receiver_data.receiver_digest,
-            self.guesser_receiver_data.lock_script_hash,
+            self.guesser_receiver_data.lock_script_hash.0,
             self.pow
         );
 
@@ -131,13 +132,13 @@ impl BlockHeader {
                     0x73657276652C2052u64,
                     0x616D70696E672055u64
                 ]),
-                lock_script_hash: Digest::new(bfe_array![
+                lock_script_hash: DigestLockScript(Digest::new(bfe_array![
                     0x7020507265737375u64,
                     0x72652043616D7061u64,
                     0x69676E206F6E2050u64,
                     0x6F77656C6C000000u64,
                     0x0A57534A00000000u64
-                ]),
+                ]))
             },
         }
     }
@@ -176,7 +177,7 @@ impl BlockHeader {
             difficulty,
             guesser_receiver_data: GuesserReceiverData {
                 receiver_digest: Digest::default(),
-                lock_script_hash: Digest::default(),
+                lock_script_hash: DigestLockScript(Digest::default()),
             },
         }
     }

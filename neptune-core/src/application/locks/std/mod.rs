@@ -1,4 +1,4 @@
-//! Provides simplified lock types for sharing data between threads
+//! provides simplified lock types for sharing data between threads
 
 mod atomic_mutex;
 mod atomic_rw;

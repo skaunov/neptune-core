@@ -34,11 +34,10 @@ impl DerefMut for TritonVmJobQueue {
 }
 
 impl TritonVmJobQueue {
-    /// returns the triton vm job queue (singleton).
+    /// returns the Triton VM job queue (singleton)
     ///
-    /// callers should execute resource intensive triton-vm tasks in this
-    /// queue to avoid running simultaneous tasks that could exceed hardware
-    /// capabilities.
+    /// callers should execute resource intensive `triton-vm` tasks in this
+    /// queue to avoid running simultaneous tasks that could exceed hardware capabilities.
     pub fn get_instance() -> Arc<Self> {
         use std::sync::OnceLock;
         static INSTANCE: OnceLock<Arc<TritonVmJobQueue>> = OnceLock::new();

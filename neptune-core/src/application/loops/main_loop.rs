@@ -785,6 +785,7 @@ impl MainLoopHandler {
                         return Ok(());
                     }
 
+                    // Report.
                     info!(
                         "Block {} from peer is new canonical tip: {:x}",
                         last_block.header().height,
@@ -1532,20 +1533,19 @@ impl MainLoopHandler {
 
         let task_handles = std::mem::take(&mut self.task_handles);
 
-        // Handle incoming connections, messages from peer tasks, and messages from the mining task
+        // handle incoming connections, messages from peer tasks, and messages from the mining task
         let mut main_loop_state = MutableMainLoopState::new(task_handles);
 
         // Set up various timers.
-        //
-        // The `MissedTickBehavior::Delay` is appropriate for tasks that don't
-        // do anything meaningful if executed in quick succession. For example,
-        // pruning stale information immediately after pruning stale information
-        // is almost certainly a no-op.
-        // Similarly, tasks performing network operations (e.g., peer discovery)
-        // should probably not try to “catch up” if some ticks were missed.
+        /* The `MissedTickBehavior::Delay` is appropriate for tasks that don't
+        do anything meaningful if executed in quick succession. For example,
+        pruning stale information immediately after pruning stale information
+        is almost certainly a no-op.
+        Similarly, tasks performing network operations (e.g., peer discovery)
+        should probably not try to “catch up” if some ticks were missed. */
 
-        // Don't run peer discovery immediately at startup since outgoing
-        // connections started from lib.rs may not have finished yet.
+        /* Don't run peer discovery immediately at startup since outgoing
+        connections started from lib.rs may not have finished yet. */
         let mut peer_discovery_interval = time::interval_at(
             Instant::now() + PEER_DISCOVERY_INTERVAL,
             PEER_DISCOVERY_INTERVAL,
@@ -1806,7 +1806,7 @@ impl MainLoopHandler {
                     // self.global_state_lock.lock_mut(|s| s.wallet_state.prune_stale_expected_utxos()).await;
                 }
 
-                // Handle membership proof resynchronization
+                // handle membership proof resynchronization
                 _ = mp_resync_interval.tick() => {
                     log_slow_scope!(fn_name!() + "::select::mp_resync_interval");
 
@@ -2586,7 +2586,6 @@ mod tests {
     use crate::application::config::cli_args;
     use crate::application::config::network::Network;
     use crate::protocol::peer::peer_info::pseudorandom_peer_id;
-    use crate::state::wallet::address::generation_address::GenerationReceivingAddress;
     use crate::state::wallet::utxo_notification::UtxoNotificationMedium;
     use crate::tests::shared::blocks::block_with_outputs;
     use crate::tests::shared::blocks::invalid_empty_block;
@@ -2716,9 +2715,9 @@ mod tests {
                 .lock_guard_mut()
                 .await
                 .wallet_state
-                .nth_spending_key(KeyType::Generation, 1);
+                .nth_spending_key(KeyType::Pokolen, 1);
             let third_party_address: ReceivingAddress =
-                GenerationReceivingAddress::derive_from_seed(Digest::default()).into();
+                crate::state::wallet::address::pokolen_address::PokolenReceivingAddress::derive_from_seed(Digest::default()).into();
             let outputs = vec![
                 (
                     third_party_address,
@@ -2736,7 +2735,7 @@ mod tests {
                 .lock_guard_mut()
                 .await
                 .wallet_state
-                .bump_derivation_index(KeyType::Generation, 10)
+                .bump_derivation_index(KeyType::Pokolen, 10)
                 .await;
 
             let block = block_with_outputs(&mut alice, outputs).await;

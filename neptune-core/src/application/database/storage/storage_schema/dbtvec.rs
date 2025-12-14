@@ -13,12 +13,12 @@ use super::PendingWrites;
 use super::SimpleRustyReader;
 use crate::application::locks::tokio::AtomicRw;
 
-/// A LevelDb-backed Vec for use with DbSchema
+/// a LevelDb-backed Vec for use with DbSchema
 ///
 /// Data stored in a DbtVec gets persisted to a levelDb database.
 #[derive(Debug)]
 pub struct DbtVec<V> {
-    // todo: merge DbtVecPrivate into DbtVec
+    // todo: merge `DbtVecPrivate` into `DbtVec`
     inner: DbtVecPrivate<V>,
 }
 
@@ -26,7 +26,7 @@ impl<V> DbtVec<V>
 where
     V: Clone + Serialize + DeserializeOwned,
 {
-    // DbtVec cannot be instantiated directly outside of storage_schema module
+    // `DbtVec` cannot be instantiated directly outside of `mod storage_schema`
     // use [Schema::new_vec()]
     #[inline]
     pub(super) async fn new(
@@ -35,9 +35,9 @@ where
         key_prefix: u8,
         name: &str,
     ) -> Self {
-        let vec = DbtVecPrivate::<V>::new(pending_writes, reader, key_prefix, name).await;
-
-        Self { inner: vec }
+        Self {
+            inner: DbtVecPrivate::<V>::new(pending_writes, reader, key_prefix, name).await,
+        }
     }
 
     #[inline]

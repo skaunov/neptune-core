@@ -1,11 +1,10 @@
-//! provides builders for generating a neptune transaction.
+//! provides builders for generating a Neptune transaction
 //!
-//! these builders are quite flexible, if a little verbose to use.  The [initiator](super::initiator) and [send](super::send)
+//! These builders are quite flexible, if a little verbose to use.  The [initiator](super::initiator) and [send](super::send)
 //! APIs use the builders internally.
 //!
 //! note that these builders support sharing an already acquired read or write lock
-//! over global-state.  Or alternatively, builders that require a lock can obtain on
-//! their own.  This is facilitated by [StateLock](crate::api::export::StateLock).
+//! over global-state.  Or alternatively, builders that require a lock can obtain on their own.  This is facilitated by [StateLock](crate::api::export::StateLock).
 
 pub mod input_selector;
 pub mod proof_builder;

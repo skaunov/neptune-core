@@ -23,19 +23,16 @@
 /// - 🗙 check that RR isn't in the Bloom filter
 /// - 🗙 hash the RR with the Bloom filter state and *output*
 use tasm_lib::{
-    data_type::StructType,
     field as rustfield,
-    io::{read_input::ReadInput, InputSource},
     memory::FIRST_NON_DETERMINISTICALLY_INITIALIZED_MEMORY_ADDRESS,
     prelude::{DataType, Digest, Library, TasmObject, TasmStruct},
-    triton_vm::{isa::triton_asm, prelude::BFieldElement},
+    triton_vm::isa::triton_asm,
     twenty_first::util_types::mmr::mmr_accumulator::MmrAccumulator,
 };
 
 use crate::{
     api::export::{NativeCurrencyAmount, Timestamp, Utxo},
     protocol::consensus::transaction::utxo::Coin,
-    state::wallet::unlocked_utxo::UnlockedUtxo,
     util_types::mutator_set::ms_membership_proof::MsMembershipProof,
 };
 
@@ -49,7 +46,9 @@ pub(crate) struct WitnessMemory {
     aocl: MmrAccumulator,
     ///
     membership_proof: MsMembershipProof,
-    utxo: Utxo,
+    // utxo: Utxo,
+    utxo_lock_script_hash: Digest,
+    utxo_coins: Vec<Coin>,
     // lock_script_and_witness: LockScriptAndWitness,
     utxo_digest: Digest,
     lock_preimage: Digest,
@@ -72,7 +71,7 @@ pub struct PublicData {
         NativeCurrencyAmount,
     ),
 }
-impl crate::protocol::proof_abstractions::tasm::program::ConsensusProgram for PublicData {
+impl crate::protocol::proof_abstractions::tasm::program::TritonProgram for PublicData {
     fn library_and_code(
         &self,
     ) -> (
@@ -150,7 +149,7 @@ impl crate::protocol::proof_abstractions::tasm::program::ConsensusProgram for Pu
 
         // let rustfield_typescripthash = rustfield!(Coin::type_script_hash);
         // let rustfield_state = rustfield!(Coin::state);
-        let audit_preloaded_data = library.import(Box::new(
+        let _audit_preloaded_data = library.import(Box::new(
             tasm_lib::structure::verify_nd_si_integrity::VerifyNdSiIntegrity::<
                 // MemoryPreload
                 crate::util_types::mutator_set::ms_membership_proof::MsMembershipProof,

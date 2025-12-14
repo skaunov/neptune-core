@@ -148,7 +148,7 @@ mod tests {
                 .map(|indices| Tip5::hash(&indices))
                 .collect_vec();
 
-            // Emulate effect on memory
+            // Emulate effect on memory.
             let digests_ptr =
                 rust_shadowing_helper_functions::dyn_malloc::dynamic_allocator(memory);
             rust_shadowing_helper_functions::list::list_insert(digests_ptr, digests, memory);

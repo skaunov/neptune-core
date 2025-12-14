@@ -1,5 +1,6 @@
 use std::sync::OnceLock;
 
+#[cfg(any(test, feature = "arbitrary-impls"))]
 use get_size2::GetSize;
 use serde::Deserialize;
 use serde::Serialize;
@@ -28,7 +29,8 @@ pub mod mmr_membership;
 pub mod predecessor_is_valid;
 
 /// The validity of a block, in the principal case, decomposes into these subclaims.
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, GetSize, BFieldCodec)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, BFieldCodec)]
+#[cfg_attr(any(test, feature = "arbitrary-impls"), derive(GetSize))]
 pub struct PrincipalBlockValidationLogic {
     // program: recursive-verify-or-is-genesis, input: block kernel, output: []
     pub predecessor_is_valid: PredecessorIsValid,
@@ -50,13 +52,15 @@ pub struct PrincipalBlockValidationLogic {
 /// two subclaims, both of which are relative to the successor block.
 ///  1. the current block lives in the block mmr of the successor block
 ///  2. the successor block is valid
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, GetSize, BFieldCodec)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, BFieldCodec)]
+#[cfg_attr(any(test, feature = "arbitrary-impls"), derive(GetSize))]
 pub struct AlternativeBlockValidationLogic {
     pub mmr_membership: MmrMembership,
     pub successor_is_valid: PrincipalBlockValidationLogic,
 }
 
-#[derive(Debug, Clone, BFieldCodec, GetSize, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, BFieldCodec, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "arbitrary-impls"), derive(GetSize))]
 pub struct PrincipalBlockValidationWitness {
     pub successor: Block, // includes proof
 }
@@ -91,7 +95,7 @@ impl TritonProgram for PrincipalBlockValidationLogic {
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
-    use crate::protocol::proof_abstractions::tasm::program::spec::TritonProgramSpecification;
+    use crate::protocol::proof_abstractions::tasm::program::tests::TritonProgramSpecification;
 
     impl TritonProgramSpecification for PrincipalBlockValidationLogic {
         fn source(&self) {

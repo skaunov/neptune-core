@@ -120,7 +120,7 @@ impl FromStr for Beneficiary {
 #[cfg(test)]
 mod tests {
     use neptune_cash::api::export::Digest;
-    use neptune_cash::api::export::GenerationSpendingKey;
+    use neptune_cash::api::export::PokolenSpendingKey;
     use neptune_cash::api::export::KeyType;
     use neptune_cash::api::export::Network;
     use neptune_cash::api::export::SpendingKey;
@@ -142,7 +142,7 @@ mod tests {
             let spending_key: SpendingKey = if address_type == 0 {
                 SymmetricKey::from_seed(seed).into()
             } else if address_type == 1 {
-                GenerationSpendingKey::derive_from_seed(seed).into()
+                PokolenSpendingKey::derive_from_seed(seed).into()
             } else if address_type == 2 {
                 EcHybridKey::from_seed(seed).into()
             } else if address_type == 3 {

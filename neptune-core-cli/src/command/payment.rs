@@ -47,9 +47,8 @@ pub(crate) enum PaymentCommand {
     /// Like `SendToMany` but the resulting transaction will be *transparent*.
     /// No privacy.
     ///
-    /// Specifically, the transaction will include announcements that expose the
-    /// raw UTXOs and all commitment randomness. This information suffices to
-    /// track amounts as well as origins and destinations. Because of the added
+    /// Specifically, the transaction will include announcements that expose the raw UTXOs and all commitment randomness. This information suffices to track amounts 
+    /// as well as origins and destinations. Because of the added
     /// announcements, these transactions require a higher fee than
     /// non-transparent transactions.
     SendTransparent {
@@ -65,8 +64,7 @@ pub(crate) enum PaymentCommand {
     /// Initiate and broadcast a transaction for consolidating UTXOs.
     ///
     /// Specifically, spend `batch`-many UTXOs to the node's own wallet,
-    /// resulting in n - 1 fewer UTXOs to manage in total. This operation has no
-    /// effect if the number of liquid UTXOs under management is less than
+    /// resulting in 3 fewer UTXOs to manage in total. This operation has no effect if the number of liquid UTXOs under management is less than
     /// `batch`, of if the node is configured to not initiate transactions.
     /// If omitted, `batch = 4`.
     Consolidate {

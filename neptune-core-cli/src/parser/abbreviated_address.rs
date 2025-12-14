@@ -4,7 +4,7 @@ use neptune_cash::api::export::KeyType;
 use neptune_cash::api::export::Network;
 use strum::IntoEnumIterator;
 
-/// Type for abbreviated addresses that clap can pase
+/// type for abbreviated addresses that clap can pase
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct AbbreviatedAddress {
     pub(crate) key_type: KeyType,
@@ -111,9 +111,9 @@ impl FromStr for AbbreviatedAddress {
 mod tests {
     use neptune_cash::api::export::Digest;
     use neptune_cash::state::wallet::address::elliptic_curve_hybrid::EcHybridAddress;
-    use neptune_cash::state::wallet::address::generation_address::GenerationReceivingAddress;
     use neptune_cash::state::wallet::address::symmetric_key::SymmetricKey;
     use neptune_cash::state::wallet::address::viewing_address::ViewingAddress;
+    use neptune_cash::state::wallet::address::pokolen_address::PokolenReceivingAddress;
     use neptune_cash::state::wallet::address::ReceivingAddress;
     use proptest::prop_assert_eq;
     use proptest_arbitrary_interop::arb;
@@ -147,7 +147,7 @@ mod tests {
 
     #[proptest]
     fn from_str_to_str_round_trip_generation_standard(#[strategy(arb::<Digest>())] digest: Digest) {
-        let address = GenerationReceivingAddress::derive_from_seed(digest);
+        let address = PokolenReceivingAddress::derive_from_seed(digest);
         let as_string = ReceivingAddress::from(address)
             .to_display_bech32m_abbreviated(Network::Main)
             .unwrap();
@@ -158,7 +158,7 @@ mod tests {
 
     #[proptest]
     fn from_str_to_str_round_trip_generation_direct(#[strategy(arb::<Digest>())] digest: Digest) {
-        let address = GenerationReceivingAddress::derive_from_seed(digest);
+        let address = PokolenReceivingAddress::derive_from_seed(digest);
         #[allow(deprecated)]
         let as_string = address.to_bech32m_abbreviated(Network::Main).unwrap();
         let from_string = AbbreviatedAddress::from_str(&as_string).unwrap();

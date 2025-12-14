@@ -1,4 +1,3 @@
-use get_size2::GetSize;
 use itertools::Itertools;
 use num_traits::CheckedSub;
 use serde::Deserialize;
@@ -23,8 +22,11 @@ use crate::util_types::mutator_set::commit;
 use crate::util_types::mutator_set::removal_record::removal_record_list::RemovalRecordList;
 
 /// The kernel of a block contains all data that is not proof data
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, BFieldCodec, GetSize)]
-#[cfg_attr(any(test, feature = "arbitrary-impls"), derive(arbitrary::Arbitrary))]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, BFieldCodec)]
+#[cfg_attr(
+    any(test, feature = "arbitrary-impls"),
+    derive(arbitrary::Arbitrary, get_size2::GetSize)
+)]
 pub struct BlockKernel {
     pub header: BlockHeader,
     pub body: BlockBody,
@@ -50,26 +52,24 @@ impl BlockKernel {
         const MINER_REWARD_TIME_LOCK_PERIOD: Timestamp = Timestamp::years(3);
 
         if self.header.height.is_genesis() {
-            return Ok(vec![]);
+            Ok(vec![])
+        } else {
+            let total_guesser_reward = self.body.total_guesser_reward()?;
+            let mut value_timelocked = total_guesser_reward;
+            value_timelocked.div_two();
+            let value_unlocked = total_guesser_reward.checked_sub(&value_timelocked).unwrap();
+
+            let coins_unlocked = value_unlocked.to_native_coins();
+            let coins_timelocked = value_timelocked.to_native_coins();
+            let lock_script_hash = self.header.guesser_receiver_data.lock_script_hash;
+            let unlocked_utxo = Utxo::new(lock_script_hash, coins_unlocked);
+            let locked_utxo = Utxo::new(lock_script_hash, coins_timelocked).with_time_lock(self.header.timestamp + MINER_REWARD_TIME_LOCK_PERIOD);
+
+            Ok(vec![locked_utxo, unlocked_utxo])
         }
-
-        let total_guesser_reward = self.body.total_guesser_reward()?;
-        let mut value_timelocked = total_guesser_reward;
-        value_timelocked.div_two();
-        let value_unlocked = total_guesser_reward.checked_sub(&value_timelocked).unwrap();
-
-        let coins_unlocked = value_unlocked.to_native_coins();
-        let coins_timelocked = value_timelocked.to_native_coins();
-        let lock_script_hash = self.header.guesser_receiver_data.lock_script_hash;
-        let unlocked_utxo = Utxo::new(lock_script_hash, coins_unlocked);
-        let locked_utxo = Utxo::new(lock_script_hash, coins_timelocked)
-            .with_time_lock(self.header.timestamp + MINER_REWARD_TIME_LOCK_PERIOD);
-
-        Ok(vec![locked_utxo, unlocked_utxo])
     }
 
-    /// Compute the addition records that correspond to the UTXOs generated for
-    /// the block's guesser
+    /// Compute the addition records that correspond to the UTXOs generated for the block's guesser
     ///
     /// The genesis block does not have this addition record.
     pub fn guesser_fee_addition_records(
@@ -77,21 +77,40 @@ impl BlockKernel {
         block_hash: Digest,
     ) -> Result<Vec<AdditionRecord>, BlockValidationError> {
         Ok(self
-            .guesser_fee_utxos()?
-            .into_iter()
-            .map(|utxo| {
-                let item = Tip5::hash(&utxo);
+        .guesser_fee_utxos()?
+        .into_iter()
+        .map(|utxo| {
+            /* Adding the block hash to the mutator set here means that no composer can start proving before solving the PoW-race;
+            production of future proofs is impossible as they depend on inputs hidden behind the veil of future PoW. */
+            let sender_randomness = block_hash;
 
-                // Adding the block hash to the mutator set here means that no
-                // composer can start proving before solving the PoW-race;
-                // production of future proofs is impossible as they depend on
-                // inputs hidden behind the veil of future PoW.
-                let sender_randomness = block_hash;
-                let receiver_digest = self.header.guesser_receiver_data.receiver_digest;
+            commit(Tip5::hash(&utxo), sender_randomness, self.header.guesser_receiver_data.receiver_digest)
+        }).collect_vec())
+    }
 
-                commit(item, sender_randomness, receiver_digest)
-            })
-            .collect_vec())
+    /// Return the mutator set update, including guesser fee outputs, invoked by this block.
+    pub fn mutator_set_update(
+        &self,
+        block_hash: Digest,
+    ) -> Result<MutatorSetUpdate, BlockValidationError> {
+        let outputs = self.all_addition_records(block_hash)?;
+        let inputs = RemovalRecordList::try_unpack(self.body.transaction_kernel.inputs.clone())
+            .map_err(BlockValidationError::from)?;
+
+        Ok(MutatorSetUpdate::new(inputs, outputs))
+    }
+
+    /// Return all addition records, including guesser fee outputs, invoked by
+    /// this block.
+    pub fn all_addition_records(
+        &self,
+        block_hash: Digest,
+    ) -> Result<Vec<AdditionRecord>, BlockValidationError> {
+        let mut addition_records = self.body.transaction_kernel.outputs.clone();
+        let guesser_addition_records = self.guesser_fee_addition_records(block_hash)?;
+        addition_records.extend(guesser_addition_records);
+
+        Ok(addition_records)
     }
 
     /// Return the mutator set update, including guesser fee outputs, invoked by

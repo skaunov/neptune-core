@@ -107,12 +107,12 @@ mod tests {
     use tasm_lib::prelude::Digest;
 
     use super::*;
-    use crate::state::wallet::address::generation_address::GenerationReceivingAddress;
+    use crate::state::wallet::address::pokolen_address::PokolenReceivingAddress;
 
     #[test]
     fn solo_doesnt_crash() {
         let _ = CoinbaseDistribution::solo(
-            GenerationReceivingAddress::derive_from_seed(Digest::default()).into(),
+            PokolenReceivingAddress::derive_from_seed(Digest::default()).into(),
         );
     }
 
@@ -120,7 +120,7 @@ mod tests {
     fn try_new_behavior() {
         assert!(CoinbaseDistribution::try_new(vec![]).is_err());
 
-        let dummy_address = GenerationReceivingAddress::derive_from_seed(Digest::default());
+        let dummy_address = PokolenReceivingAddress::derive_from_seed(Digest::default());
         let whole_liquid = CoinbaseOutput {
             fraction_in_promille: 1000,
             recipient: dummy_address.into(),

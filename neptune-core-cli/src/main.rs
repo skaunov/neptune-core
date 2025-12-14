@@ -68,15 +68,15 @@ use crate::parser::full_or_abbreviated_address::FullOrAbbreviatedAddress;
 const SELF: &str = "self";
 const ANONYMOUS: &str = "anonymous";
 
-/// Top-level CLI args
+/// Top-level CLI args.
 #[derive(Debug, Clone, Parser)]
 #[clap(name = "neptune-cli", about = "An RPC client")]
 struct Config {
-    /// Sets the neptune-core rpc server localhost port to connect to.
+    /// Sets the `neptune-core` rpc server localhost port to connect to.
     #[clap(short, long, default_value = "9799", value_name = "port")]
     port: u16,
 
-    /// neptune-core data directory containing wallet and blockchain state
+    /// `neptune-core` data directory containing wallet and blockchain state
     #[clap(long)]
     data_dir: Option<PathBuf>,
 
@@ -88,7 +88,7 @@ struct Config {
 async fn main() -> Result<()> {
     let args: Config = Config::parse();
 
-    // Handle commands that don't require a server
+    // Handle commands that don't require a server.
     match &args.command {
         Command::Completions => {
             if let Some(shell) = Shell::from_env() {
@@ -101,7 +101,7 @@ async fn main() -> Result<()> {
             let wallet_dir =
                 DataDirectory::get(args.data_dir.clone(), *network)?.wallet_directory_path();
 
-            // Get wallet object, create various wallet secret files
+            // Get wallet object, create various wallet secret files.
             let wallet_file = WalletFileContext::wallet_secret_path(&wallet_dir);
             if !wallet_file.exists() {
                 eprintln!("No wallet file found at {}.", wallet_file.display());
@@ -114,7 +114,7 @@ async fn main() -> Result<()> {
             let wallet_dir =
                 DataDirectory::get(args.data_dir.clone(), *network)?.wallet_directory_path();
 
-            // Get wallet object, create various wallet secret files
+            // Get wallet object, create various wallet secret files.
             DataDirectory::create_dir_if_not_exists(&wallet_dir).await?;
 
             let wallet_file_context = WalletFileContext::read_from_file_or_create(&wallet_dir)?;
@@ -187,11 +187,11 @@ async fn main() -> Result<()> {
             return Ok(());
         }
         Command::Wallet(WalletCommand::ExportSeedPhrase { network }) => {
-            // The root path is where both the wallet and all databases are stored
+            // The root path is where both the wallet and all databases are stored.
             let wallet_dir =
                 DataDirectory::get(args.data_dir.clone(), *network)?.wallet_directory_path();
 
-            // Get wallet object, create various wallet secret files
+            // Get wallet object, create various wallet secret files.
             let wallet_file = WalletFileContext::wallet_secret_path(&wallet_dir);
             ensure!(
                 wallet_file.exists(),
@@ -359,7 +359,7 @@ async fn main() -> Result<()> {
                 return Ok(());
             }
 
-            // The root path is where both the wallet and all databases are stored
+            // The root path is where both the wallet and all databases are stored.
             let wallet_dir =
                 DataDirectory::get(args.data_dir.clone(), *network)?.wallet_directory_path();
 
@@ -618,7 +618,7 @@ async fn main() -> Result<()> {
         }
         Command::Wallet(WalletCommand::NextReceivingAddress) => {
             let receiving_address = client
-                .next_receiving_address(ctx, token, KeyType::Generation)
+                .next_receiving_address(ctx, token, KeyType::Pokolen)
                 .await??;
             println!("{}", receiving_address.to_display_bech32m(network).unwrap())
         }
@@ -1172,7 +1172,7 @@ fn print_nth_receiving_address(
 ) -> Result<()> {
     let wallet_entropy = get_wallet_entropy(network, data_dir)?;
 
-    let nth_spending_key = wallet_entropy.nth_generation_spending_key(index as u64);
+    let nth_spending_key = wallet_entropy.nth_forthegeneration_spending_key(index as u64);
     let nth_receiving_address = nth_spending_key.to_address();
     let nth_address_as_string = match nth_receiving_address.to_bech32m(network) {
         Ok(s) => s,

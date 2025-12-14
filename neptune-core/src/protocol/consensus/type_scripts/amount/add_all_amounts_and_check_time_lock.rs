@@ -13,7 +13,6 @@ use tasm_lib::triton_vm::prelude::LabelledInstruction;
 use super::test_time_lock_and_maybe_mark::TestTimeLockAndMaybeMark;
 use super::total_amount_main_loop::DigestSource;
 use crate::protocol::consensus::transaction::utxo::Coin;
-use crate::protocol::consensus::type_scripts::amount::read_and_add_amount::ReadAndAddAmount;
 use crate::protocol::consensus::type_scripts::amount::TOO_BIG_COIN_FIELD_SIZE_ERROR;
 use crate::BFieldElement;
 
@@ -67,7 +66,9 @@ impl BasicSnippet for AddAllAmountsAndCheckTimeLock {
         let test_time_lock_and_maybe_mark = library.import(Box::new(TestTimeLockAndMaybeMark {
             release_date: self.release_date,
         }));
-        let read_and_add_amount = library.import(Box::new(ReadAndAddAmount));
+        let read_and_add_amount = library.import(Box::new(
+            crate::protocol::consensus::type_scripts::amount::read_and_add_amount::ReadAndAddAmount,
+        ));
 
         let field_type_script_hash = field!(Coin::type_script_hash);
         let digest_eq = DataType::Digest.compare();
@@ -154,7 +155,7 @@ impl BasicSnippet for AddAllAmountsAndCheckTimeLock {
                 // _ M j *coins[j]_si [amount] [timelocked_amount] [utxo_amount'] utxo_is_timelocked (type_script_hash == timelock_digest)
 
 
-                // If he coin is a time lock:
+                // If the coin is a time lock:
                 //  - test the state, which encodes a release date, against the
                 //    timestamp of the transaction kernel plus the coinbase
                 //    timelock period.

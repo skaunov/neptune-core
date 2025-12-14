@@ -5,12 +5,13 @@ use serde::Serialize;
 use tasm_lib::triton_vm::prelude::Digest;
 use tracing::warn;
 
+use super::pokolen_address;
 use super::common;
-use super::generation_address;
 use super::receiving_address::ReceivingAddress;
 use super::symmetric_key;
 use crate::api::export::Network;
 use crate::protocol::consensus::transaction::announcement::Announcement;
+use crate::protocol::consensus::transaction::lock_script::DigestLockScript;
 use crate::protocol::consensus::transaction::lock_script::LockScript;
 use crate::protocol::consensus::transaction::lock_script::LockScriptAndWitness;
 use crate::protocol::consensus::transaction::transaction_kernel::TransactionKernel;
@@ -21,27 +22,20 @@ use crate::state::wallet::incoming_utxo::IncomingUtxo;
 use crate::BFieldElement;
 
 #[derive(
-    Debug,
-    Clone,
-    Copy,
-    Serialize,
-    Deserialize,
-    PartialEq,
-    Eq,
-    Hash,
-    strum::EnumString,
-    strum::EnumIter,
+    Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash, 
+    strum::EnumString, strum::EnumIter
 )]
 #[strum(serialize_all = "snake_case", ascii_case_insensitive)]
 #[repr(u8)]
 #[non_exhaustive]
 pub enum KeyType {
-    /// [generation_address] built on [crate::prelude::twenty_first::math::lattice::kem]
+    /// [pokolen_address] built on [crate::prelude::twenty_first::math::lattice::kem]
     ///
-    /// wraps a symmetric key built on aes-256-gcm
-    Generation = generation_address::GENERATION_FLAG_U8,
+    /// wraps a symmetric key built on `aes-256-gcm` -- see its module doc for further details
+    #[strum(serialize = "Generation")]
+    Pokolen = pokolen_address::POKOLEN_FLAG_U8,
 
-    /// [symmetric_key] built on aes-256-gcm
+    /// [symmetric_key] built on `aes-256-gcm`
     Symmetric = symmetric_key::SYMMETRIC_KEY_FLAG_U8,
 
     /// Elliptic curve hybrid address.
@@ -70,7 +64,7 @@ pub enum KeyType {
 impl std::fmt::Display for KeyType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Generation => write!(f, "generation"),
+            Self::Pokolen => write!(f, "generation"),
             Self::Symmetric => write!(f, "symmetric"),
             Self::EcHybrid => write!(f, "ec_hybrid"),
             Self::ViewingAddress => write!(f, "viewing_address"),
@@ -81,7 +75,7 @@ impl std::fmt::Display for KeyType {
 impl From<&ReceivingAddress> for KeyType {
     fn from(addr: &ReceivingAddress) -> Self {
         match addr {
-            ReceivingAddress::Generation(_) => Self::Generation,
+            ReceivingAddress::Pokolen(_) => Self::Pokolen,
             ReceivingAddress::Symmetric(_) => Self::Symmetric,
             ReceivingAddress::EcHybrid(_) => Self::EcHybrid,
             ReceivingAddress::ViewingAddress(_) => Self::ViewingAddress,
@@ -92,7 +86,7 @@ impl From<&ReceivingAddress> for KeyType {
 impl From<&SpendingKey> for KeyType {
     fn from(addr: &SpendingKey) -> Self {
         match addr {
-            SpendingKey::Generation(_) => Self::Generation,
+            SpendingKey::ForTheGeneration(_) => Self::Pokolen,
             SpendingKey::Symmetric(_) => Self::Symmetric,
             SpendingKey::EcHybrid(_) => Self::EcHybrid,
             SpendingKey::ViewingAddressKey(_) => Self::ViewingAddress,
@@ -111,7 +105,7 @@ impl TryFrom<&Announcement> for KeyType {
 
     fn try_from(pa: &Announcement) -> Result<Self> {
         match common::key_type_from_announcement(pa) {
-            Ok(kt) if kt == Self::Generation.into() => Ok(Self::Generation),
+            Ok(kt) if kt == Self::Pokolen.into() => Ok(Self::Pokolen),
             Ok(kt) if kt == Self::Symmetric.into() => Ok(Self::Symmetric),
             Ok(kt) if kt == Self::EcHybrid.into() => Ok(Self::EcHybrid),
             Ok(kt) if kt == Self::ViewingAddress.into() => Ok(Self::ViewingAddress),
@@ -124,7 +118,7 @@ impl KeyType {
     /// returns human-readable-prefix (hrp) for a given network
     pub fn get_hrp(&self, network: Network) -> String {
         match self {
-            Self::Generation => generation_address::GenerationReceivingAddress::get_hrp(network),
+            Self::Pokolen => pokolen_address::PokolenReceivingAddress::get_hrp(network),
             Self::Symmetric => symmetric_key::SymmetricKey::get_hrp(network),
             Self::EcHybrid => elliptic_curve_hybrid::EcHybridAddress::get_hrp(network),
             Self::ViewingAddress => viewing_address::ViewingAddress::get_hrp(network),
@@ -137,8 +131,8 @@ impl KeyType {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[non_exhaustive]
 pub enum SpendingKey {
-    /// A key from [generation_address]
-    Generation(generation_address::GenerationSpendingKey),
+    /// a key from [generation_address]
+    ForTheGeneration(pokolen_address::PokolenSpendingKey),
 
     /// A [symmetric_key]
     Symmetric(symmetric_key::SymmetricKey),
@@ -156,9 +150,9 @@ impl std::hash::Hash for SpendingKey {
     }
 }
 
-impl From<generation_address::GenerationSpendingKey> for SpendingKey {
-    fn from(key: generation_address::GenerationSpendingKey) -> Self {
-        Self::Generation(key)
+impl From<pokolen_address::PokolenSpendingKey> for SpendingKey {
+    fn from(key: pokolen_address::PokolenSpendingKey) -> Self {
+        Self::ForTheGeneration(key)
     }
 }
 
@@ -195,7 +189,7 @@ impl SpendingKey {
     /// returns the address that corresponds to this spending key.
     pub fn to_address(&self) -> ReceivingAddress {
         match self {
-            Self::Generation(k) => k.to_address().into(),
+            Self::ForTheGeneration(k) => k.to_address().into(),
             Self::Symmetric(k) => k.into(),
             Self::EcHybrid(k) => k.to_address().into(),
             Self::ViewingAddressKey(k) => k.to_address().into(),
@@ -205,7 +199,7 @@ impl SpendingKey {
     /// Return the lock script and its witness
     pub fn lock_script_and_witness(&self) -> LockScriptAndWitness {
         match self {
-            SpendingKey::Generation(generation_spending_key) => {
+            SpendingKey::ForTheGeneration(generation_spending_key) => {
                 generation_spending_key.lock_script_and_witness()
             }
             SpendingKey::Symmetric(symmetric_key) => symmetric_key.lock_script_and_witness(),
@@ -215,12 +209,10 @@ impl SpendingKey {
     }
 
     pub(crate) fn lock_script(&self) -> LockScript {
-        LockScript {
-            program: self.lock_script_and_witness().program,
-        }
+        self.lock_script_and_witness().program
     }
 
-    pub fn lock_script_hash(&self) -> Digest {
+    pub fn lock_script_hash(&self) -> DigestLockScript {
         self.lock_script().hash()
     }
 
@@ -231,14 +223,14 @@ impl SpendingKey {
     /// as the privacy_digest
     pub fn privacy_preimage(&self) -> Digest {
         match self {
-            Self::Generation(k) => k.receiver_preimage(),
+            Self::ForTheGeneration(k) => k.receiver_preimage(),
             Self::Symmetric(k) => k.receiver_preimage(),
             Self::EcHybrid(k) => k.receiver_preimage(),
             Self::ViewingAddressKey(k) => k.receiver_preimage(),
         }
     }
 
-    /// Return the receiver_identifier if this spending key has a corresponding
+    /// Return the `receiver_identifier` if this spending key has a corresponding
     /// receiving address.
     ///
     /// The receiver identifier is a public (=readably by anyone) fingerprint of
@@ -253,7 +245,7 @@ impl SpendingKey {
     /// increased workload associated with detecting incoming UTXOs.
     pub fn receiver_identifier(&self) -> BFieldElement {
         match self {
-            Self::Generation(k) => k.receiver_identifier(),
+            Self::ForTheGeneration(k) => k.receiver_identifier(),
             Self::Symmetric(k) => k.receiver_identifier(),
             Self::EcHybrid(k) => k.receiver_identifier(),
             Self::ViewingAddressKey(k) => k.receiver_identifier(),
@@ -271,7 +263,7 @@ impl SpendingKey {
     ///  - `Some(Ok(..))` if decryption succeeds.
     pub fn decrypt(&self, ciphertext_bfes: &[BFieldElement]) -> Result<(Utxo, Digest)> {
         match self {
-            Self::Generation(k) => k.decrypt(ciphertext_bfes),
+            Self::ForTheGeneration(k) => k.decrypt(ciphertext_bfes),
             Self::Symmetric(k) => k.decrypt(ciphertext_bfes).map_err(anyhow::Error::new),
             Self::EcHybrid(k) => k.viewing_key().decrypt(ciphertext_bfes),
             Self::ViewingAddressKey(k) => k.to_address().decrypt(ciphertext_bfes),
@@ -301,34 +293,34 @@ impl SpendingKey {
 
         // for all announcements
         tx_kernel
-            .announcements
-            .iter()
+        .announcements
+        .iter()
 
-            // ... that are marked as encrypted to our key type
-            .filter(|pa| self.matches_announcement_key_type(pa))
+        // ... that are marked as encrypted to our key type
+        .filter(|pa| self.matches_announcement_key_type(pa))
 
-            // ... that match the receiver_id of this key
-            .filter(move |pa| {
-                matches!(common::receiver_identifier_from_announcement(pa), Ok(r) if r == receiver_identifier)
-            })
+        // ... that match the receiver_id of this key
+        .filter(move |pa| {
+            matches!(common::receiver_identifier_from_announcement(pa), Ok(r) if r == receiver_identifier)
+        })
 
-            // ... that have a ciphertext field
-            .filter_map(|pa| self.ok_warn(common::ciphertext_from_announcement(pa)))
+        // ... that have a ciphertext field
+        .filter_map(|pa| self.ok_warn(common::ciphertext_from_announcement(pa)))
 
-            // ... which can be decrypted with this key
-            .filter_map(|c| self.ok_warn(self.decrypt(&c)))
+        // ... which can be decrypted with this key
+        .filter_map(|c| self.ok_warn(self.decrypt(&c)))
 
-            // ... map to IncomingUtxo
-            .map(move |(utxo, sender_randomness)| {
-                // and join those with the receiver digest to get a commitment
-                // Note: the commitment is computed in the same way as in the mutator set.
-                IncomingUtxo {
-                    utxo,
-                    sender_randomness,
-                    receiver_preimage,
-                    is_guesser_fee: false,
-                }
-            }).collect()
+        // ... map to `IncomingUtxo`
+        .map(move |(utxo, sender_randomness)| {
+            // and join those with the receiver digest to get a commitment
+            // Note: the commitment is computed in the same way as in the mutator set.
+            IncomingUtxo {
+                utxo,
+                sender_randomness,
+                receiver_preimage,
+                is_guesser_fee: false,
+            }
+        }).collect()
     }
 
     /// converts a result into an Option and logs a warning on any error
@@ -342,7 +334,7 @@ impl SpendingKey {
         }
     }
 
-    /// returns true if the [Announcement] has a type-flag that matches the type of this key
+    /// returns `true` if the [Announcement] has a type-flag that matches the type of this key
     pub(super) fn matches_announcement_key_type(&self, pa: &Announcement) -> bool {
         matches!(KeyType::try_from(pa), Ok(kt) if kt == KeyType::from(self))
     }
@@ -373,14 +365,14 @@ mod tests {
 
     #[test]
     fn keytype_to_string_is_as_defined() {
-        assert_eq!(KeyType::Generation.to_string(), "generation");
+        assert_eq!(KeyType::Pokolen.to_string(), "generation");
         assert_eq!(KeyType::Symmetric.to_string(), "symmetric");
     }
 
     #[test]
     fn keytype_from_str_works_when_all_lowercase() {
         assert_eq!(
-            KeyType::Generation,
+            KeyType::Pokolen,
             KeyType::from_str("generation").unwrap()
         );
         assert_eq!(KeyType::Symmetric, KeyType::from_str("symmetric").unwrap());

@@ -1,7 +1,6 @@
 //! This module provides a builder for generating [TransactionDetails].
 //!
-//! The builder will modify state only if one or more new keys must be added to
-//! the wallet for change output(s).  see [TransactionDetailsBuilder::build()]
+//! The builder will modify state only if one or more new keys must be added to the wallet for change output(s).  see [TransactionDetailsBuilder::build()]
 //! for details.
 //!
 //! The resulting `TransactionDetails` contains all data needed for a [Transaction](crate::protocol::consensus::transaction::Transaction)

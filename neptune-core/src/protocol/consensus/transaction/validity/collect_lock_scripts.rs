@@ -46,7 +46,7 @@ impl SecretWitness for CollectLockScriptsWitness {
         self.salted_input_utxos
             .utxos
             .iter()
-            .flat_map(|utxo| utxo.lock_script_hash().values())
+            .flat_map(|utxo| utxo.lock_script_hash().0.values())
             .collect_vec()
     }
 
@@ -207,8 +207,8 @@ mod tests {
 
     use super::*;
     use crate::protocol::proof_abstractions::tasm::builtins as tasm;
-    use crate::protocol::proof_abstractions::tasm::program::spec::TritonProgramSpecification;
     use crate::protocol::proof_abstractions::tasm::program::tests::test_program_snapshot;
+    use crate::protocol::proof_abstractions::tasm::program::tests::TritonProgramSpecification;
 
     impl TritonProgramSpecification for CollectLockScripts {
         fn source(&self) {
@@ -228,7 +228,7 @@ mod tests {
             // iterate over all input UTXOs and output the lock script hashes
             let mut i = 0;
             while i < input_utxos.len() {
-                tasm::tasmlib_io_write_to_stdout___digest(input_utxos[i].lock_script_hash());
+                tasm::tasmlib_io_write_to_stdout___digest(input_utxos[i].lock_script_hash().0);
                 i += 1;
             }
         }

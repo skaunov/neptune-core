@@ -38,14 +38,14 @@ mod rescan {
         let genesis = Block::genesis(network);
         let own_address = global_state
             .wallet_state
-            .nth_spending_key(KeyType::Generation, 102)
+            .nth_spending_key(KeyType::Pokolen, 102)
             .to_address();
 
         // Bump derivation counter to register 102nd key as own
         rt.block_on(
             global_state
                 .wallet_state
-                .bump_derivation_index(KeyType::Generation, 200),
+                .bump_derivation_index(KeyType::Pokolen, 200),
         );
 
         let notification_medium = if operation == RescanOperation::Announced {

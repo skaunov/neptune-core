@@ -34,7 +34,6 @@ use tasm_lib::twenty_first::util_types::mmr::shared_basic::leaf_index_to_mt_inde
 use crate::protocol::consensus::transaction::primitive_witness::SaltedUtxos;
 use crate::protocol::consensus::transaction::transaction_kernel::TransactionKernel;
 use crate::protocol::consensus::transaction::transaction_kernel::TransactionKernelField;
-use crate::protocol::consensus::transaction::validity::tasm::compute_absolute_indices::ComputeAbsoluteIndices;
 use crate::protocol::consensus::transaction::PrimitiveWitness;
 use crate::protocol::consensus::type_scripts::native_currency_amount::NativeCurrencyAmount;
 use crate::protocol::proof_abstractions::mast_hash::MastHash;
@@ -51,17 +50,9 @@ const JUMP_OUT_OF_BOUNDS: i128 = 1_000_003;
 const INPUT_UTXOS_SIZE_MANIPILATION: i128 = 1_000_004;
 
 #[derive(
-    Clone,
-    Debug,
-    Serialize,
-    Deserialize,
-    PartialEq,
-    Eq,
-    GetSize,
-    BFieldCodec,
-    FieldCount,
-    TasmObject,
+    Clone, Debug, Serialize, Deserialize, PartialEq, Eq, BFieldCodec, FieldCount, TasmObject,
 )]
+#[cfg_attr(any(test, feature = "arbitrary-impls"), derive(get_size2::GetSize))]
 pub struct RemovalRecordsIntegrityWitness {
     input_utxos: SaltedUtxos,
     membership_proofs: Vec<MsMembershipProof>,
@@ -109,8 +100,60 @@ impl From<&PrimitiveWitness> for RemovalRecordsIntegrityWitness {
     }
 }
 
-/// The parts of the [`RemovalRecordsIntegrityWitness`] that are initialized in
-/// memory at the start of each execution.
+impl SecretWitness for RemovalRecordsIntegrityWitness {
+    fn nondeterminism(&self) -> NonDeterminism {
+        // set memory
+        let memory_part: RemovalRecordsIntegrityWitnessMemory = self.into();
+
+        let mut memory = HashMap::default();
+        encode_to_memory(
+            &mut memory,
+            FIRST_NON_DETERMINISTICALLY_INITIALIZED_MEMORY_ADDRESS,
+            &memory_part,
+        );
+
+        let mut tokens: Vec<BFieldElement> = self.swbfa_hash.reversed().values().to_vec();
+        for msmp in &self.membership_proofs {
+            let mut u64_as_stream = msmp.aocl_leaf_index.encode();
+            u64_as_stream.reverse();
+            tokens.extend(&u64_as_stream);
+
+            tokens.extend(&msmp.receiver_preimage.reversed().values());
+            tokens.extend(&msmp.sender_randomness.reversed().values());
+        }
+
+        // set digests
+        let digests = [
+            self.mast_path_mutator_set.clone(),
+            self.mast_path_inputs.clone(),
+            self.mast_path_coinbase.clone(),
+            self.aocl_auth_paths
+                .iter()
+                .flat_map(|x| x.authentication_path.clone())
+                .collect_vec(),
+        ]
+        .concat();
+
+        NonDeterminism::new(tokens)
+            .with_ram(memory)
+            .with_digests(digests)
+    }
+
+    fn standard_input(&self) -> PublicInput {
+        PublicInput::new(self.mast_root.reversed().values().to_vec())
+    }
+
+    fn output(&self) -> Vec<BFieldElement> {
+        Tip5::hash(&self.input_utxos).values().to_vec()
+    }
+
+    fn program(&self) -> Program {
+        RemovalRecordsIntegrity.program()
+    }
+}
+
+/// The parts of the [`RemovalRecordsIntegrityWitness`] that are initialized in memory at the start
+/// of each execution.
 #[derive(Clone, Debug, BFieldCodec, TasmObject)]
 struct RemovalRecordsIntegrityWitnessMemory {
     input_utxos: SaltedUtxos,
@@ -129,58 +172,6 @@ impl From<&RemovalRecordsIntegrityWitness> for RemovalRecordsIntegrityWitnessMem
             aocl: value.aocl.to_owned(),
             swbfi: value.swbfi.to_owned(),
         }
-    }
-}
-
-impl SecretWitness for RemovalRecordsIntegrityWitness {
-    fn nondeterminism(&self) -> NonDeterminism {
-        // set memory
-        let memory_part: RemovalRecordsIntegrityWitnessMemory = self.into();
-
-        let mut memory = HashMap::default();
-        encode_to_memory(
-            &mut memory,
-            FIRST_NON_DETERMINISTICALLY_INITIALIZED_MEMORY_ADDRESS,
-            &memory_part,
-        );
-
-        let mut nd_stream: Vec<BFieldElement> = self.swbfa_hash.reversed().values().to_vec();
-        for msmp in &self.membership_proofs {
-            let mut u64_as_stream = msmp.aocl_leaf_index.encode();
-            u64_as_stream.reverse();
-            nd_stream.extend(&u64_as_stream);
-
-            nd_stream.extend(&msmp.receiver_preimage.reversed().values());
-            nd_stream.extend(&msmp.sender_randomness.reversed().values());
-        }
-
-        // set digests
-        let digests = [
-            self.mast_path_mutator_set.clone(),
-            self.mast_path_inputs.clone(),
-            self.mast_path_coinbase.clone(),
-            self.aocl_auth_paths
-                .iter()
-                .flat_map(|x| x.authentication_path.clone())
-                .collect_vec(),
-        ]
-        .concat();
-
-        NonDeterminism::new(nd_stream)
-            .with_ram(memory)
-            .with_digests(digests)
-    }
-
-    fn standard_input(&self) -> PublicInput {
-        PublicInput::new(self.mast_root.reversed().values().to_vec())
-    }
-
-    fn output(&self) -> Vec<BFieldElement> {
-        Tip5::hash(&self.input_utxos).values().to_vec()
-    }
-
-    fn program(&self) -> Program {
-        RemovalRecordsIntegrity.program()
     }
 }
 
@@ -378,14 +369,14 @@ impl TritonProgram for RemovalRecordsIntegrity {
         let ms_commit = library.import(Box::new(mutator_set::commit::Commit));
         let mmr_verify = library.import(Box::new(MmrVerifyFromSecretInLeafIndexOnStack));
 
-        let compute_absolute_indices = library.import(Box::new(ComputeAbsoluteIndices));
+        let compute_absolute_indices = library.import(Box::new(crate::protocol::consensus::transaction::validity::tasm::compute_absolute_indices::ComputeAbsoluteIndices));
         let hash_absolute_indices = library.import(Box::new(HashStaticSize {
             size: AbsoluteIndexSet::static_length().expect("absolute indices have a static size"),
         }));
 
         let field_aocl = field!(RemovalRecordsIntegrityWitnessMemory::aocl);
         let field_swbfi = field!(RemovalRecordsIntegrityWitnessMemory::swbfi);
-        let field_peaks = field!(MmrAccumulatorTip5::peaks);
+        let rustfield_peaks = field!(MmrAccumulatorTip5::peaks);
         let field_input_utxos = field!(RemovalRecordsIntegrityWitnessMemory::input_utxos);
         let field_utxos = field!(SaltedUtxos::utxos);
         let field_utxos_with_size = field_with_size!(SaltedUtxos::utxos);
@@ -692,16 +683,16 @@ impl TritonProgram for RemovalRecordsIntegrity {
             // INVARIANT: _ *rrs[i]_si num_utxos i *utxos[i]_si *aocl
             {for_all_utxos}:
                 /*
-                    1. Check loop stop-condition
-                    2. Calculate UTXO hash, store to static memory
-                    3. Get AOCL leaf index, store to static memory
-                    4. Get receiver preimage, store to static memory
-                    5. Get sender randomness, store to static memory
-                    6. Calculate canonical commitment
-                    7. Verify AOCL-membership of canonical commitment
-                    8. Calculate SWBF-indices
-                    9. Verify equality with claimed SWBF-indices
-                    10. Prepare for next loop iteration
+                    01. Check loop stop-condition.
+                    02. Hash UTXO, store to static memory.
+                    03. Get AOCL leaf index, store to static memory.
+                    04. Get receiver preimage, store to static memory.
+                    05. Get sender randomness, store to static memory.
+                    06. Calculate canonical commitment.
+                    07. Verify AOCL-membership of canonical commitment.
+                    08. Calculate SWBF-indices.
+                    09. Verify equality with claimed SWBF-indices.
+                    10. Prepare for next loop iteration.
                  */
 
 
@@ -760,8 +751,9 @@ impl TritonProgram for RemovalRecordsIntegrity {
                 // _ *rrs[i]_si num_utxos i *utxos[i]_si *aocl
 
                 /* 6. */
+                // prepare the value for '7.'
                 dup 0
-                {&field_peaks}
+                {&rustfield_peaks}
                 // _ *rrs[i]_si num_utxos i *utxos[i]_si *aocl *aocl_peaks
 
                 push 0
@@ -1056,8 +1048,8 @@ mod tests {
     use crate::protocol::consensus::transaction::utxo::Utxo;
     use crate::protocol::consensus::transaction::TransactionKernelModifier;
     use crate::protocol::proof_abstractions::tasm::builtins as tasm;
-    use crate::protocol::proof_abstractions::tasm::program::spec::TritonProgramSpecification;
     use crate::protocol::proof_abstractions::tasm::program::tests::test_program_snapshot;
+    use crate::protocol::proof_abstractions::tasm::program::tests::TritonProgramSpecification;
     use crate::util_types::mutator_set::addition_record::AdditionRecord;
     use crate::util_types::mutator_set::commit;
     use crate::util_types::mutator_set::removal_record::absolute_index_set::AbsoluteIndexSet;

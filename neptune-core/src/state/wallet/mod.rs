@@ -79,7 +79,7 @@ mod tests {
     use crate::tests::shared_tokio_runtime;
 
     #[apply(shared_tokio_runtime)]
-    async fn wallet_state_constructor_with_genesis_block_test() {
+    pub async fn wallet_state_constructor_with_genesis_block_test() {
         // This test is designed to verify that the genesis block is applied
         // to the wallet state at initialization. For (practically) all networks.
 
@@ -127,16 +127,15 @@ mod tests {
             let charlie_key = charlie_wallet.nth_generation_spending_key_for_tests(0);
             for _ in 0..12 {
                 let previous_block = next_block;
-                let (nb, _) =
+                next_block =
                     make_mock_block(&previous_block, None, charlie_key, rng.random(), network)
-                        .await;
-                next_block = nb;
-                let maintain_mps = true;
+                        .await
+                        .0;
                 alice
                     .update_wallet_state_with_new_block(
                         &previous_block.mutator_set_accumulator_after().unwrap(),
                         &next_block,
-                        maintain_mps,
+                        true,
                     )
                     .await;
             }
@@ -962,7 +961,7 @@ mod tests {
 
         use super::*;
         use crate::state::mempool::upgrade_priority::UpgradePriority;
-        use crate::state::wallet::address::generation_address::GenerationReceivingAddress;
+        use crate::state::wallet::address::pokolen_address::PokolenReceivingAddress;
 
         #[traced_test]
         #[apply(shared_tokio_runtime)]
@@ -1083,7 +1082,7 @@ mod tests {
             gsl: GlobalStateLock,
             amount: NativeCurrencyAmount,
         ) -> Transaction {
-            let third_party = GenerationReceivingAddress::derive_from_seed(Digest::default());
+            let third_party = PokolenReceivingAddress::derive_from_seed(Digest::default());
             let sender_randomness = Digest::default();
 
             let receiver_data = TxOutput::offchain_native_currency(
@@ -1141,7 +1140,7 @@ mod tests {
             );
 
             for (index, key) in known_keys {
-                assert_eq!(devnet_wallet.nth_generation_spending_key(index), key);
+                assert_eq!(devnet_wallet.nth_forthegeneration_spending_key(index), key);
             }
         }
 
@@ -1168,7 +1167,7 @@ mod tests {
             for (index, known_addr) in known_addrs {
                 println!("index: {}", index);
                 let derived_addr = devnet_wallet
-                    .nth_generation_spending_key(index)
+                    .nth_forthegeneration_spending_key(index)
                     .to_address()
                     .to_bech32m(network)
                     .unwrap();
@@ -1195,7 +1194,7 @@ mod tests {
 
             let addrs = indexes
                 .into_iter()
-                .map(|i| (i, devnet_wallet.nth_generation_spending_key(i)))
+                .map(|i| (i, devnet_wallet.nth_forthegeneration_spending_key(i)))
                 .collect_vec();
 
             println!("{}", serde_json::to_string(&addrs).unwrap());
@@ -1227,7 +1226,7 @@ mod tests {
                     (
                         i,
                         devnet_wallet
-                            .nth_generation_spending_key(i)
+                            .nth_forthegeneration_spending_key(i)
                             .to_address()
                             .to_bech32m(network)
                             .unwrap(),
@@ -1264,7 +1263,7 @@ mod tests {
         }
 
         mod worker {
-            use crate::state::wallet::address::generation_address;
+            use crate::state::wallet::address::pokolen_address;
 
             // provides the set of indexes to derive keys at
             pub fn known_key_indexes() -> [u64; 13] {
@@ -1300,7 +1299,7 @@ mod tests {
             }
 
             // returns a vec of hard-coded keys that were generated from alphanet branch.
-            pub fn known_keys() -> Vec<(u64, generation_address::GenerationSpendingKey)> {
+            pub fn known_keys() -> Vec<(u64, pokolen_address::PokolenSpendingKey)> {
                 serde_json::from_str(json_serialized_known_keys()).unwrap()
             }
 

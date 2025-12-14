@@ -62,7 +62,7 @@ impl From<GuesserReceiverData> for RpcGuesserReceiverData {
     fn from(data: GuesserReceiverData) -> Self {
         RpcGuesserReceiverData {
             receiver_digest: data.receiver_digest,
-            lock_script_hash: data.lock_script_hash,
+            lock_script_hash: data.lock_script_hash.0,
         }
     }
 }
@@ -71,12 +71,10 @@ impl From<RpcGuesserReceiverData> for GuesserReceiverData {
     fn from(rpc: RpcGuesserReceiverData) -> Self {
         Self {
             receiver_digest: rpc.receiver_digest,
-            lock_script_hash: rpc.lock_script_hash,
+            lock_script_hash: crate::protocol::consensus::transaction::lock_script::DigestLockScript(rpc.lock_script_hash),
         }
     }
 }
-
-pub type RpcBlockHeight = BlockHeight;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct RpcDifficulty(pub Difficulty);
@@ -161,7 +159,7 @@ impl<'de> Deserialize<'de> for RpcProofOfWork {
 #[serde(rename_all = "camelCase")]
 pub struct RpcBlockHeader {
     pub version: BFieldElement,
-    pub height: RpcBlockHeight,
+    pub height: BlockHeight,
     pub prev_block_digest: Digest,
     pub timestamp: Timestamp,
     pub pow: RpcBlockPow,

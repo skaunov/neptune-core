@@ -171,23 +171,22 @@ pub enum BlockProof {
 // Upon deserialization, the field will have Digest::default() which is desired
 // so that the digest will be recomputed if/when hash() is called.
 //
-// We likewise skip the field for `BFieldCodec`, and `GetSize` because there
+// We likewise skip the field for `BFieldCodec` because there
 // exist no impls for `OnceLock<_>` so derive fails.
 //
 // A unit test-suite exists in module tests::digest_encapsulation.
 #[readonly::make]
-#[derive(Debug, Clone, Serialize, Deserialize, BFieldCodec, GetSize)]
+#[derive(Debug, Clone, Serialize, Deserialize, BFieldCodec)]
+#[cfg_attr(any(test, feature = "arbitrary-impls"), derive(get_size2::GetSize))]
 pub struct Block {
-    /// Everything but the proof
+    /// everything but the proof
     pub kernel: BlockKernel,
 
     pub proof: BlockProof,
 
-    // this is only here as an optimization for Block::hash()
-    // so that we lazily compute the hash at most once.
+    /// this is only here as an optimization for `Block::hash()` so that we lazily compute the hash at most once
     #[serde(skip)]
     #[bfield_codec(ignore)]
-    #[get_size(ignore)]
     digest: OnceLock<Digest>,
 }
 
@@ -391,17 +390,10 @@ impl Block {
 
     /// Return the mutator set as it looks after the application of this block.
     ///
-    /// Includes the guesser-fee UTXOs which are not included by the
-    /// `mutator_set_accumulator` field on the block body.
-    pub fn mutator_set_accumulator_after(
-        &self,
-    ) -> Result<MutatorSetAccumulator, BlockValidationError> {
-        let guesser_fee_addition_records = self.guesser_fee_addition_records()?;
-        let msa = self
-            .body()
-            .mutator_set_accumulator_after(guesser_fee_addition_records);
-
-        Ok(msa)
+    /// Includes the guesser-fee UTXOs which are not included by the `mutator_set_accumulator` field on the block body.
+    pub fn mutator_set_accumulator_after(&self) -> Result<MutatorSetAccumulator, BlockValidationError> {
+        Ok(self.body()
+        .mutator_set_accumulator_after(self.guesser_fee_addition_records()?))
     }
 
     #[inline]
@@ -514,7 +506,7 @@ impl Block {
         // The premine UTXOs can be hardcoded here.
         let authority_wallet = WalletEntropy::devnet_wallet();
         let authority_receiving_address = authority_wallet
-            .nth_generation_spending_key(0)
+            .nth_forthegeneration_spending_key(0)
             .to_address()
             .into();
         vec![
@@ -1047,6 +1039,39 @@ impl Block {
         Ok(())
     }
 
+    /// Validate the proof of a block, an that the proof relates to the expected
+    /// appendices.
+    pub(crate) async fn validate_block_proof(
+        &self,
+        network: Network,
+    ) -> Result<(), BlockValidationError> {
+        let consensus_rule_set = ConsensusRuleSet::infer_from(network, self.header().height);
+
+        // 1.a)
+        for required_claim in BlockAppendix::consensus_claims(self.body(), consensus_rule_set) {
+            if !self.appendix().contains(&required_claim) {
+                return Err(BlockValidationError::AppendixMissingClaim);
+            }
+        }
+
+        // 1.b)
+        if self.appendix().len() > MAX_NUM_CLAIMS {
+            return Err(BlockValidationError::AppendixTooLarge);
+        }
+
+        // 1.c)
+        let BlockProof::SingleProof(block_proof) = &self.proof else {
+            return Err(BlockValidationError::ProofQuality);
+        };
+
+        // 1.d)
+        if !BlockProgram::verify(self.body(), self.appendix(), block_proof, network).await {
+            return Err(BlockValidationError::ProofValidity);
+        }
+
+        Ok(())
+    }
+
     /// indicates if a difficulty reset should be performed.
     ///
     /// Reset only occurs for network(s) that define a difficulty-reset-interval,
@@ -1278,8 +1303,14 @@ impl Block {
     pub(crate) fn guesser_fee_addition_records(
         &self,
     ) -> Result<Vec<AdditionRecord>, BlockValidationError> {
+        self.kernel.guesser_fee_addition_records(self.hash())
+    }
+
+    /// Return all addition records (transaction outputs) in this block,
+    /// including guesser rewards.
+    pub(crate) fn all_addition_records(&self) -> Result<Vec<AdditionRecord>, BlockValidationError> {
         let block_hash = self.hash();
-        self.kernel.guesser_fee_addition_records(block_hash)
+        self.kernel.all_addition_records(block_hash)
     }
 
     /// Return all addition records (transaction outputs) in this block,
@@ -1601,8 +1632,7 @@ pub(crate) mod tests {
             self.set_header_pow(valid_pow);
         }
 
-        /// Check if PoW requirement has been fulfilled, allowing for the
-        /// overriding of the consensus rule set.
+        /// Check if PoW requirement has been fulfilled, allowing for the overriding of the consensus rule set.
         pub(crate) fn pow_verify_for_tests(
             &self,
             parent_target: Digest,
@@ -2242,7 +2272,7 @@ pub(crate) mod tests {
                 .lock_guard()
                 .await
                 .wallet_state
-                .nth_spending_key(KeyType::Generation, 0);
+                .nth_spending_key(KeyType::Pokolen, 0);
             let output_to_self = TxOutput::onchain_native_currency(
                 NativeCurrencyAmount::coins(1),
                 rng.random(),
@@ -2528,8 +2558,8 @@ pub(crate) mod tests {
         use super::*;
         use crate::protocol::consensus::transaction::utxo_triple::UtxoTriple;
         use crate::state::transaction::tx_creation_config::TxCreationConfig;
-        use crate::state::wallet::address::generation_address::GenerationReceivingAddress;
-        use crate::state::wallet::address::generation_address::GenerationSpendingKey;
+        use crate::state::wallet::address::pokolen_address::PokolenSpendingKey;
+        use crate::state::wallet::address::pokolen_address::PokolenReceivingAddress;
         use crate::tests::shared::blocks::make_mock_block_with_puts_and_guesser_preimage_and_guesser_fraction;
 
         #[apply(shared_tokio_runtime)]
@@ -2540,8 +2570,8 @@ pub(crate) mod tests {
             let network = Network::Main;
             let mut rng = rand::rng();
             let genesis_block = Block::genesis(network);
-            let a_key = GenerationSpendingKey::derive_from_seed(rng.random());
-            let guesser_address = GenerationReceivingAddress::derive_from_seed(rng.random());
+            let a_key = PokolenSpendingKey::derive_from_seed(rng.random());
+            let guesser_address = PokolenReceivingAddress::derive_from_seed(rng.random());
             let (block1, _) = make_mock_block_with_puts_and_guesser_preimage_and_guesser_fraction(
                 &genesis_block,
                 vec![],
@@ -2591,7 +2621,7 @@ pub(crate) mod tests {
 
             let mut block = invalid_block_with_transaction(&genesis_block, transaction);
 
-            let guesser_key = GenerationSpendingKey::derive_from_seed(rand::rng().random());
+            let guesser_key = PokolenSpendingKey::derive_from_seed(rand::rng().random());
             let guesser_address = guesser_key.to_address();
             block.set_header_guesser_address(guesser_address.into());
 
@@ -2625,7 +2655,7 @@ pub(crate) mod tests {
             let in_seven_months = launch_date + Timestamp::months(7);
             let in_eight_months = launch_date + Timestamp::months(8);
             let alice_wallet = WalletEntropy::devnet_wallet();
-            let alice_key = alice_wallet.nth_generation_spending_key(0);
+            let alice_key = alice_wallet.nth_forthegeneration_spending_key(0);
             let alice_address = alice_key.to_address();
             let mut alice = mock_genesis_global_state(
                 0,
@@ -2786,7 +2816,7 @@ pub(crate) mod tests {
                     .lock_guard_mut()
                     .await
                     .wallet_state
-                    .next_unused_spending_key(KeyType::Generation)
+                    .next_unused_spending_key(KeyType::Pokolen)
                     .await
                     .to_address();
                 let send_amount = NativeCurrencyAmount::coins(1);

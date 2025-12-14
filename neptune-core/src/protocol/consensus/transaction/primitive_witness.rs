@@ -13,6 +13,7 @@ use tasm_lib::structure::tasm_object::TasmObject;
 use tasm_lib::triton_vm::prelude::*;
 use tasm_lib::twenty_first::math::b_field_element::BFieldElement;
 use tasm_lib::twenty_first::math::bfield_codec::BFieldCodec;
+use tokio::task::JoinSet;
 use tracing::warn;
 
 use super::lock_script::LockScriptAndWitness;
@@ -33,7 +34,7 @@ use crate::util_types::mutator_set::removal_record::RemovalRecord;
 
 /// A list of UTXOs with an associated salt.
 ///
-/// `SaltedUtxos` is a struct for representing a list of UTXOs in a witness object when it
+/// It is a struct for representing a list of UTXOs in a witness object when it
 /// is desirable to associate a random but consistent salt for the entire list of UTXOs.
 /// This situation arises when two distinct consensus programs prove different features
 /// about the same list of UTXOs.
@@ -58,7 +59,7 @@ impl Display for SaltedUtxos {
 }
 
 impl SaltedUtxos {
-    /// Takes a Vec of UTXOs and returns a `SaltedUtxos` object. The salt comes from
+    /// Takes a `Vec` of UTXOs and returns a `SaltedUtxos` struct. The salt comes from
     /// `thread_rng`.
     pub fn new(utxos: Vec<Utxo>) -> Self {
         Self {
@@ -74,7 +75,7 @@ impl SaltedUtxos {
         }
     }
 
-    /// Generate a `SaltedUtxos` object that contains no UTXOs. There is a random salt
+    /// Generate a `SaltedUtxos` object that contains no UTXO. There is a random salt
     /// though, which comes from `thread_rng`.
     pub fn empty() -> Self {
         Self {
@@ -83,7 +84,7 @@ impl SaltedUtxos {
         }
     }
 
-    /// Concatenate two `SaltedUtxos` objects. Derives the salt from hashing the
+    /// Concatenate two `SaltedUtxos` objects. Derives `salt` from hashing the
     /// concatenation of that of the operands.
     pub fn cat(&self, other: SaltedUtxos) -> Self {
         Self {
@@ -162,7 +163,7 @@ impl PrimitiveWitness {
         transaction_kernel: TransactionKernel,
         mutator_set_accumulator: MutatorSetAccumulator,
     ) -> PrimitiveWitness {
-        /// Generate a salt to use for [SaltedUtxos], deterministically.
+        /// Generate a salt to use for [`SaltedUtxos`], deterministically.
         fn generate_secure_pseudorandom_seed(
             input_utxos: &Vec<Utxo>,
             output_utxos: &Vec<Utxo>,
@@ -180,46 +181,44 @@ impl PrimitiveWitness {
             seed[0..32].try_into().unwrap()
         }
 
-        let input_utxos = unlocked_utxos
+        let utxos_input_unsalted = unlocked_utxos
             .iter()
             .map(|unlocker| unlocker.utxo.to_owned())
             .collect_vec();
-        let salt_seed =
-            generate_secure_pseudorandom_seed(&input_utxos, &output_utxos, &sender_randomnesses);
 
-        let mut rng = StdRng::from_seed(salt_seed);
+        let mut rng = StdRng::from_seed(generate_secure_pseudorandom_seed(
+            &utxos_input_unsalted,
+            &output_utxos,
+            &sender_randomnesses,
+        ));
         let salted_output_utxos = SaltedUtxos::new_with_rng(output_utxos.to_vec(), &mut rng);
-        let salted_input_utxos = SaltedUtxos::new_with_rng(input_utxos.clone(), &mut rng);
+        let salted_input_utxos = SaltedUtxos::new_with_rng(utxos_input_unsalted.clone(), &mut rng);
 
-        let type_script_hashes =
-            Utxo::type_script_hashes(input_utxos.iter().chain(output_utxos.iter()));
-        let type_scripts_and_witnesses = type_script_hashes
+        PrimitiveWitness {
+            input_utxos: salted_input_utxos.clone(),
+            input_membership_proofs: unlocked_utxos
+                .iter()
+                .map(|unlocker| unlocker.mutator_set_mp().to_owned())
+                .collect_vec(),
+            lock_scripts_and_witnesses: unlocked_utxos
+                .iter()
+                .map(|unlocker| unlocker.lock_script_and_witness())
+                .cloned()
+                .collect_vec(),
+            type_scripts_and_witnesses: Utxo::typescripts(
+                utxos_input_unsalted.iter().chain(output_utxos.iter()),
+            )
             .into_iter()
-            .map(|type_script_hash| {
+            .map(|typescript| {
                 match_type_script_and_generate_witness(
-                    type_script_hash,
+                    typescript,
                     transaction_kernel.clone(),
                     salted_input_utxos.clone(),
                     salted_output_utxos.clone(),
                 )
-                .expect("type script hash should be known.")
+                .expect("type script hash should be known")
             })
-            .collect_vec();
-        let input_lock_scripts_and_witnesses = unlocked_utxos
-            .iter()
-            .map(|unlocker| unlocker.lock_script_and_witness())
-            .cloned()
-            .collect_vec();
-        let input_membership_proofs = unlocked_utxos
-            .iter()
-            .map(|unlocker| unlocker.mutator_set_mp().to_owned())
-            .collect_vec();
-
-        PrimitiveWitness {
-            input_utxos: salted_input_utxos,
-            lock_scripts_and_witnesses: input_lock_scripts_and_witnesses,
-            type_scripts_and_witnesses,
-            input_membership_proofs,
+            .collect_vec(),
             output_utxos: salted_output_utxos,
             output_sender_randomnesses: sender_randomnesses.to_vec(),
             output_receiver_digests: receiver_digests.to_vec(),
@@ -253,43 +252,51 @@ impl PrimitiveWitness {
         )
     }
 
-    /// Verify the transaction directly from primitive witness
+    /// Verify the transaction directly from primitive witness...
     ///
-    /// (without proofs or decomposing into subclaims).
+    /// ...(without proofs or decomposing into subclaims).
     pub async fn validate(&self) -> Result<(), WitnessValidationError> {
-        for lock_script_and_witness in &self.lock_scripts_and_witnesses {
-            let lock_script = lock_script_and_witness.program.clone();
-            let secret_input = lock_script_and_witness.nondeterminism();
-            let public_input = Tip5::hash(self).reversed().encode().into();
+        let mut wvalidations = JoinSet::new();
+        self.lock_scripts_and_witnesses
+            .iter()
+            .for_each(|lock_script_and_witness| {
+                let lock_script = lock_script_and_witness.program.clone();
+                let secret_input = lock_script_and_witness.nondeterminism();
+                let public_input = Tip5::hash(self).reversed().encode().into();
 
-            // This could be a lengthy, CPU intensive call.
-            // Also, the lock script is satisfied if it halts gracefully (i.e., without crashing).
-            // The output is irrelevant.
-            let result = tokio::task::spawn_blocking(move || {
-                VM::run(lock_script.clone(), public_input, secret_input)
-            })
-            .await;
-
-            let Ok(run_res) = result else {
-                let reason = "Failed to spawn task for verifying lock script.";
-                let error = WitnessValidationError::Failed(reason.into());
-                warn!("{}", error);
-                return Err(error);
-            };
-
-            if let Err(_e) = run_res {
-                // tbd: should we include the VMerror in InvalidLockScript error?
-                let error = WitnessValidationError::InvalidLockScript(
-                    lock_script_and_witness.program.hash(),
-                );
-                warn!("{}", error);
-                return Err(error);
+                // This could be a lengthy, CPU intensive call.
+                // Also, the lock script is satisfied if it halts gracefully (i.e., without crashing).
+                // The output is irrelevant.
+                wvalidations.spawn_blocking(move || {
+                    VM::run(lock_script.program.clone(), public_input, secret_input)
+                });
+            });
+        while !wvalidations.is_empty() {
+            match wvalidations
+                .join_next()
+                .await
+                .expect("checked in the condition")
+            {
+                Ok(Err(_e)) => {
+                    wvalidations.abort_all();
+                    // tbd: should we include the VMerror in InvalidLockScript error?
+                    warn!("{}", WitnessValidationError::InvalidLockScript);
+                    return Err(WitnessValidationError::InvalidLockScript);
+                }
+                Err(_) => {
+                    wvalidations.abort_all();
+                    let error = WitnessValidationError::Failed(
+                        "Failed to spawn task for verifying lock script.".into(),
+                    );
+                    warn!("{}", error);
+                    return Err(error);
+                }
+                _ => {}
             }
         }
 
-        // Verify correct computation of removal records. Also, collect the removal
-        // records' hashes in order to validate them against those provided in the
-        // transaction kernel later.
+        /* Verify correct computation of removal records. Also, collect the removal
+        records' hashes in order to validate them against those provided in the transaction kernel later. */
         let mut witnessed_removal_records = vec![];
         for (input_utxo, membership_proof) in self
             .input_utxos
@@ -298,7 +305,7 @@ impl PrimitiveWitness {
             .zip_eq(&self.input_membership_proofs)
         {
             let item = Tip5::hash(input_utxo);
-            // TODO: write these functions in tasm
+            // TODO: write these functions in Tasm
             if !self.mutator_set_accumulator.verify(item, membership_proof) {
                 let error = WitnessValidationError::InvalidMembershipProof {
                     witness_mutator_set_accumulator_hash: self.mutator_set_accumulator.hash(),
@@ -312,7 +319,7 @@ impl PrimitiveWitness {
         }
 
         // verify that all type required scripts are present.
-        let required_type_script_hashes = Utxo::type_script_hashes(
+        let required_type_script_hashes = Utxo::typescripts(
             self.output_utxos
                 .utxos
                 .iter()
@@ -501,8 +508,8 @@ impl PrimitiveWitness {
 #[derive(Debug, Clone, thiserror::Error, Serialize, Deserialize)]
 #[non_exhaustive]
 pub enum WitnessValidationError {
-    #[error("invalid lock script. error: {0}")]
-    InvalidLockScript(Digest),
+    #[error("invalid lock script")]
+    InvalidLockScript,
 
     #[error("invalid membership proof")]
     InvalidMembershipProof {
@@ -570,7 +577,7 @@ pub mod neptune_arbitrary {
     use crate::protocol::consensus::type_scripts::time_lock::TimeLockWitness;
     use crate::protocol::consensus::type_scripts::TypeScriptWitness;
     use crate::protocol::proof_abstractions::timestamp::Timestamp;
-    use crate::state::wallet::address::generation_address;
+    use crate::state::wallet::address::pokolen_address;
     use crate::util_types::mutator_set::msa_and_records::MsaAndRecords;
 
     impl PrimitiveWitness {
@@ -939,7 +946,7 @@ pub mod neptune_arbitrary {
             let input_spending_keys = address_seeds
                 .iter()
                 .map(|address_seed| {
-                    generation_address::GenerationSpendingKey::derive_from_seed(*address_seed)
+                    pokolen_address::PokolenSpendingKey::derive_from_seed(*address_seed)
                 })
                 .collect_vec();
 
@@ -1035,7 +1042,7 @@ pub mod neptune_arbitrary {
                         amount.div_two();
                     }
                     let liquid_utxo = Utxo::new(
-                        generation_address::GenerationSpendingKey::derive_from_seed(*seed)
+                        pokolen_address::PokolenSpendingKey::derive_from_seed(*seed)
                             .to_address()
                             .lock_script()
                             .hash(),
@@ -1044,7 +1051,7 @@ pub mod neptune_arbitrary {
                     let mut utxos = vec![liquid_utxo];
                     if let Some(release_date) = timelock_until {
                         let lock_script =
-                            generation_address::GenerationSpendingKey::derive_from_seed(*seed)
+                            pokolen_address::PokolenSpendingKey::derive_from_seed(*seed)
                                 .to_address()
                                 .lock_script();
                         let timelocked_utxo = Utxo::new(
@@ -1487,139 +1494,133 @@ mod tests {
             (
                 vec(NativeCurrencyAmount::arbitrary_non_negative(), num_outputs),
                 NativeCurrencyAmount::arbitrary_non_negative(),
-                vec(arb::<Digest>(), num_outputs),
+                vec(arb::<crate::protocol::consensus::transaction::lock_script::DigestLockScript>(), num_outputs),
                 vec(arb::<Digest>(), num_outputs),
                 vec(arb::<Digest>(), num_outputs),
                 arb::<[BFieldElement; 3]>(),
                 arb::<[BFieldElement; 3]>(),
                 vec(arb::<Announcement>(), num_announcements),
-            )
-                .prop_map(
-                    move |(
-                        mut output_amounts,
-                        mut fee,
-                        lock_script_hashes,
-                        output_sender_randomnesses,
-                        output_receiver_digests,
-                        input_salt,
-                        output_salt,
-                        announcements,
-                    )| {
-                        let input_amount = input_utxos
-                            .iter()
-                            .map(|utxo| utxo.get_native_currency_amount())
-                            .sum::<NativeCurrencyAmount>();
-                        PrimitiveWitness::find_balanced_output_amounts_and_fee(
-                            input_amount,
-                            coinbase,
-                            &mut output_amounts,
-                            &mut fee,
-                        );
+            ).prop_map(move |(
+                mut output_amounts,
+                mut fee,
+                lock_script_hashes,
+                output_sender_randomnesses,
+                output_receiver_digests,
+                input_salt,
+                output_salt,
+                announcements,
+            )| {
+                let input_amount = input_utxos
+                .iter()
+                .map(|utxo| utxo.get_native_currency_amount())
+                .sum::<NativeCurrencyAmount>();
+                PrimitiveWitness::find_balanced_output_amounts_and_fee(
+                    input_amount,
+                    coinbase,
+                    &mut output_amounts,
+                    &mut fee,
+                );
 
-                        assert_eq!(
-                            input_amount + coinbase.unwrap_or(NativeCurrencyAmount::from_nau(0)),
-                            output_amounts.iter().copied().sum::<NativeCurrencyAmount>() + fee
-                        );
-                        assert!(!fee.is_negative());
+                assert_eq!(
+                    input_amount + coinbase.unwrap_or(NativeCurrencyAmount::from_nau(0)),
+                    output_amounts.iter().copied().sum::<NativeCurrencyAmount>() + fee
+                );
+                assert!(!fee.is_negative());
 
-                        let mut output_utxos: Vec<_> = output_amounts
-                            .into_iter()
-                            .zip(lock_script_hashes)
-                            .map(|(amount, lock_script_hash)| {
-                                Utxo::new(lock_script_hash, amount.to_native_coins())
-                            })
-                            .collect_vec();
+                let mut output_utxos: Vec<_> = output_amounts
+                    .into_iter()
+                    .zip(lock_script_hashes)
+                    .map(|(amount, lock_script_hash)| {
+                        Utxo::new(lock_script_hash, amount.to_native_coins())
+                    }).collect_vec();
 
-                        // If coinbase is set, add timelock type script, with
-                        // sufficiently long timelock to output UTXOs for at
-                        // least half the value.
-                        if let Some(coinbase) = coinbase {
-                            let release_date = timestamp + MINING_REWARD_TIME_LOCK_PERIOD;
-                            let mut timelocked = NativeCurrencyAmount::zero();
-                            let mut required_timelocked = coinbase;
-                            required_timelocked.div_two();
-                            let mut i = 0;
-                            while timelocked < required_timelocked {
-                                output_utxos[i] =
-                                    output_utxos[i].clone().with_time_lock(release_date);
-                                timelocked += output_utxos[i].get_native_currency_amount();
-                                i += 1;
-                            }
-                        };
+                // If coinbase is set, add timelock type script, with
+                // sufficiently long timelock to output UTXOs for at least half the value.
+                if let Some(coinbase) = coinbase {
+                    let release_date = timestamp + MINING_REWARD_TIME_LOCK_PERIOD;
+                    let mut timelocked = NativeCurrencyAmount::zero();
+                    let mut required_timelocked = coinbase;
+                    required_timelocked.div_two();
+                    let mut i = 0;
+                    while timelocked < required_timelocked {
+                        output_utxos[i] =
+                            output_utxos[i].clone().with_time_lock(release_date);
+                        timelocked += output_utxos[i].get_native_currency_amount();
+                        i += 1;
+                    }
+                };
 
-                        let salted_input_utxos = SaltedUtxos {
-                            utxos: input_utxos.clone(),
-                            salt: input_salt,
-                        };
-                        let salted_output_utxos = SaltedUtxos {
-                            utxos: output_utxos.clone(),
-                            salt: output_salt,
-                        };
+                let salted_input_utxos = SaltedUtxos {
+                    utxos: input_utxos.clone(),
+                    salt: input_salt,
+                };
+                let salted_output_utxos = SaltedUtxos {
+                    utxos: output_utxos.clone(),
+                    salt: output_salt,
+                };
 
-                        let output_addition_records = izip!(
-                            output_utxos,
-                            output_sender_randomnesses.clone(),
-                            output_receiver_digests.clone(),
-                        )
-                        .map(|(utxo, sender_randomness, receiver_digest)| {
-                            UtxoTriple {
-                                utxo,
-                                sender_randomness,
-                                receiver_digest,
-                            }
-                            .addition_record()
-                        })
-                        .collect_vec();
-
-                        let kernel = TransactionKernelProxy {
-                            inputs: input_removal_records.clone(),
-                            outputs: output_addition_records,
-                            announcements,
-                            fee,
-                            coinbase,
-                            timestamp,
-                            mutator_set_hash: mutator_set_accumulator.hash(),
-                            merge_bit: false,
-                        }
-                        .into_kernel();
-
-                        let mut type_scripts_and_witnesses = vec![NativeCurrencyWitness {
-                            salted_input_utxos: salted_input_utxos.clone(),
-                            salted_output_utxos: salted_output_utxos.clone(),
-                            kernel: kernel.clone(),
-                        }
-                        .type_script_and_witness()];
-                        let type_script_hashes = Utxo::type_script_hashes(
-                            salted_input_utxos
-                                .utxos
-                                .iter()
-                                .chain(&salted_output_utxos.utxos),
-                        );
-                        if type_script_hashes.contains(&TimeLock.hash()) {
-                            type_scripts_and_witnesses.push(
-                                TimeLockWitness::new(
-                                    kernel.clone(),
-                                    salted_input_utxos.clone(),
-                                    salted_output_utxos.clone(),
-                                )
-                                .type_script_and_witness(),
-                            );
-                        }
-
-                        Self {
-                            input_utxos: salted_input_utxos,
-                            input_membership_proofs: input_membership_proofs.clone(),
-                            lock_scripts_and_witnesses: lock_scripts_and_witnesses.clone(),
-                            type_scripts_and_witnesses,
-                            output_utxos: salted_output_utxos,
-                            output_sender_randomnesses,
-                            output_receiver_digests,
-                            mutator_set_accumulator: mutator_set_accumulator.clone(),
-                            kernel,
-                        }
-                    },
+                let output_addition_records = izip!(
+                    output_utxos,
+                    output_sender_randomnesses.clone(),
+                    output_receiver_digests.clone(),
                 )
-                .boxed()
+                .map(|(utxo, sender_randomness, receiver_digest)| {
+                    UtxoTriple {
+                        utxo,
+                        sender_randomness,
+                        receiver_digest,
+                    }
+                    .addition_record()
+                })
+                .collect_vec();
+
+                let kernel = TransactionKernelProxy {
+                    inputs: input_removal_records.clone(),
+                    outputs: output_addition_records,
+                    announcements,
+                    fee,
+                    coinbase,
+                    timestamp,
+                    mutator_set_hash: mutator_set_accumulator.hash(),
+                    merge_bit: false,
+                }
+                .into_kernel();
+
+                let mut type_scripts_and_witnesses = vec![NativeCurrencyWitness {
+                    salted_input_utxos: salted_input_utxos.clone(),
+                    salted_output_utxos: salted_output_utxos.clone(),
+                    kernel: kernel.clone(),
+                }
+                .type_script_and_witness()];
+                let type_script_hashes = Utxo::typescripts(
+                    salted_input_utxos
+                        .utxos
+                        .iter()
+                        .chain(&salted_output_utxos.utxos),
+                );
+                if type_script_hashes.contains(&TimeLock.hash()) {
+                    type_scripts_and_witnesses.push(
+                        TimeLockWitness::new(
+                            kernel.clone(),
+                            salted_input_utxos.clone(),
+                            salted_output_utxos.clone(),
+                        )
+                        .type_script_and_witness(),
+                    );
+                }
+
+                Self {
+                    input_utxos: salted_input_utxos,
+                    input_membership_proofs: input_membership_proofs.clone(),
+                    lock_scripts_and_witnesses: lock_scripts_and_witnesses.clone(),
+                    type_scripts_and_witnesses,
+                    output_utxos: salted_output_utxos,
+                    output_sender_randomnesses,
+                    output_receiver_digests,
+                    mutator_set_accumulator: mutator_set_accumulator.clone(),
+                    kernel,
+                }
+            }).boxed()
         }
 
         /// A strategy for primitive witnesses with 1 input, 2 outputs, and the

@@ -94,7 +94,6 @@ mod tests {
     use neptune_cash::protocol::consensus::block::block_selector::BlockSelectorLiteral;
     use neptune_cash::state::GlobalState;
     use neptune_cash::state::GlobalStateLock;
-    use neptune_cash::state::wallet::address::generation_address::GenerationReceivingAddress;
     use neptune_cash::state::wallet::wallet_entropy::WalletEntropy;
     use num_traits::Zero;
     use rand::distr::Alphanumeric;
@@ -103,11 +102,11 @@ mod tests {
 
     use crate::http::HttpClient;
 
-    /// Start a real neptune-core node with a specified port offset to allow
+    /// Start a real `neptune-core` node with a specified port offset to allow
     /// tests to run in parallel.
     ///
     /// Don't use this real server to test all cornercases of inner workings of
-    /// neptune-core. Think of this server as integration testing.
+    /// `neptune-core`. Think of this server as integration testing.
     async fn start_pseudo_real_server(
         network: Network,
         activated_namespaces: HashSet<Namespace>,
@@ -121,14 +120,13 @@ mod tests {
         cli_args.utxo_index = true;
         cli_args.tx_proving_capability = Some(TxProvingCapability::SingleProof);
 
-        // allow run if instance is running, and don't overwrite
-        // existing data dir.
+        // allow run if instance is running, and don't overwrite existing data dir
         cli_args.peer_port = port_offset + 1;
         cli_args.rpc_port = port_offset + 2;
         cli_args.quic_port = port_offset + 3;
         cli_args.tcp_port = port_offset + 4;
         cli_args.rpc_modules = activated_namespaces.into_iter().collect();
-        cli_args.unsafe_rpc = unsafe_rpc;
+        cli_args.rpc_isnot_controlled = unsafe_rpc;
         let tmp_root: PathBuf = env::temp_dir()
             .join("neptune-unit-tests")
             .join(Path::new(&Alphanumeric.sample_string(&mut rand::rng(), 16)));
@@ -204,11 +202,10 @@ mod tests {
 
     #[tokio::test]
     async fn was_mined_on_genesis() {
-        let unsafe_rpc = false;
         let (client, _) = start_pseudo_real_server(
             Network::Main,
-            HashSet::from([Namespace::Utxoindex]),
-            unsafe_rpc,
+            HashSet::from([Namespace::UtxoIndex]),
+            false,
             40520,
             None,
         )
@@ -356,9 +353,9 @@ mod tests {
             .unwrap();
         let send_amt = NativeCurrencyAmount::coins(2).into();
         let fee = NativeCurrencyAmount::coins(2).into();
-        let recipient = GenerationReceivingAddress::derive_from_seed(Digest::default())
-            .to_bech32m(network)
-            .unwrap();
+        let recipient = 
+            neptune_cash::state::wallet::address::pokolen_address::PokolenReceivingAddress::derive_from_seed(Digest::default())
+            .to_bech32m(network).unwrap();
 
         let key_counter_prior = client
             .derivation_index(KeyType::ViewingAddress)
@@ -366,6 +363,7 @@ mod tests {
             .unwrap()
             .derivation_index;
         let accept_lustrations = false;
+        
         let resp = client
             .send(
                 send_amt,
@@ -396,12 +394,15 @@ mod tests {
         tokio::time::sleep(Duration::from_secs(1)).await;
 
         // Verify tx is in mempool
-        let mempool_txs = client
-            .get_transactions_by_addition_records(resp.outputs)
-            .await
-            .unwrap()
-            .transactions;
-        assert_eq!(1, mempool_txs.len());
+        assert_eq!(
+            1,
+            client
+                .get_transactions_by_addition_records(resp.outputs)
+                .await
+                .unwrap()
+                .transactions
+                .len()
+        );
 
         assert_eq!(
             key_counter_prior + 1,
@@ -458,7 +459,7 @@ mod tests {
         let send_amt = NativeCurrencyAmount::coins(5);
         let fee = NativeCurrencyAmount::coins(2).into();
         let bob_address = bob_client
-            .generate_address(KeyType::Generation)
+            .generate_address(KeyType::Pokolen)
             .await
             .unwrap()
             .address;

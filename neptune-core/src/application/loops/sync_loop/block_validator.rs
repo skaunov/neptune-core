@@ -19,7 +19,7 @@ use crate::protocol::consensus::block::Block;
 /// Indeed, the outward-facing API is given by `SyncLoopHandle` and to create it
 /// the caller needs to pass a `Network` object instead. The correct
 /// `BlockValidator` is inferred from this object.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub(super) enum BlockValidator {
     Production {
         network: Network,
@@ -44,7 +44,6 @@ impl BlockValidator {
         match self {
             BlockValidator::Production { network } => {
                 let timestamp = Timestamp::now();
-
                 successor.is_valid(predecessor, timestamp, *network).await
             }
 

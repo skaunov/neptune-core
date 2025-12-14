@@ -373,10 +373,9 @@ where
 
 /// Builds a [`TransactionProof::ProofCollection`] from `Cow<PrimitiveWitness>`
 ///
-/// will generate a mock proof if Network::use_mock_proof() is true.
+/// will generate a mock proof if `Network::use_mock_proof()` is true.
 ///
 /// # Panics
-///
 ///  - If `proof_job_options.job_settings.proof_type
 ///           != TransactionProofType::ProofCollection`
 async fn proof_collection_from_witness(

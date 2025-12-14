@@ -29,7 +29,7 @@ pub struct RpcServer {
 
 impl RpcServer {
     pub fn new(state: GlobalStateLock, unrestricted: Option<bool>) -> Self {
-        let unrestricted = unrestricted.unwrap_or(state.cli().unsafe_rpc);
+        let unrestricted = unrestricted.unwrap_or(state.cli().rpc_isnot_controlled);
         let to_main_tx = state.rpc_server_to_main_tx();
 
         Self {
@@ -115,7 +115,7 @@ mod tests {
         let namespaces = vec![Namespace::Personal];
         let no_unsafe = cli_args::Args {
             network: Network::Main,
-            unsafe_rpc: false,
+            rpc_isnot_controlled: false,
             rpc_modules: namespaces.clone(),
             ..Default::default()
         };
@@ -127,7 +127,7 @@ mod tests {
 
         let with_unsafe = cli_args::Args {
             network: Network::Main,
-            unsafe_rpc: true,
+            rpc_isnot_controlled: true,
             rpc_modules: namespaces,
             ..Default::default()
         };

@@ -115,38 +115,31 @@ impl RpcServer {
         static SUBMIT_BLOCK: LazyLock<String> =
             LazyLock::new(|| format!("{}_{}", Namespace::Mining, RpcMethods::SubmitBlock));
 
-        let request: JsonRequest = match serde_json::from_slice(&body) {
-            Ok(req) => req,
-            Err(_) => {
-                return Json(JsonResponse::error(None, JsonError::ParseError));
+        Json(match serde_json::from_slice::<JsonRequest>(&body) {
+            Err(_) => JsonResponse::error(None, JsonError::ParseError),
+            Ok(request) => {
+                let max_size = if request.method == *SUBMIT_TX {
+                    MAX_REQUEST_SIZE_IN_BYTES
+                } else if request.method == *SUBMIT_BLOCK {
+                    MAX_REQUEST_SIZE_FOR_BLOCK_SUBMISSION_IN_BYTES
+                } else {
+                    MAX_DEFAULT_REQUEST_SIZE_IN_BYTES
+                };
+
+                if body.len() > max_size {
+                    JsonResponse::error(
+                        request.id,
+                        JsonError::RequestBodyTooBig {
+                            max: max_size,
+                            got: body.len(),
+                        },
+                    )
+                } else {match router.dispatch(&request.method, request.params).await {
+                    Ok(result) => JsonResponse::success(request.id, result),
+                    Err(error) => JsonResponse::error(request.id, error),
+                }}
             }
-        };
-
-        let max_size = if request.method == *SUBMIT_TX {
-            MAX_REQUEST_SIZE_IN_BYTES
-        } else if request.method == *SUBMIT_BLOCK {
-            MAX_REQUEST_SIZE_FOR_BLOCK_SUBMISSION_IN_BYTES
-        } else {
-            MAX_DEFAULT_REQUEST_SIZE_IN_BYTES
-        };
-
-        if body.len() > max_size {
-            return Json(JsonResponse::error(
-                request.id,
-                JsonError::RequestBodyTooBig {
-                    max: max_size,
-                    got: body.len(),
-                },
-            ));
-        }
-
-        let res = router.dispatch(&request.method, request.params).await;
-        let response = match res {
-            Ok(result) => JsonResponse::success(request.id, result),
-            Err(error) => JsonResponse::error(request.id, error),
-        };
-
-        Json(response)
+        })
     }
 }
 

@@ -110,7 +110,7 @@ impl BlockchainState {
     }
 
     /// Block height of current tip.
-    pub fn tip_height(&self) -> BlockHeight {
+    pub(crate) fn tip_height(&self) -> BlockHeight {
         self.tip().header().height
     }
 
@@ -121,7 +121,7 @@ impl BlockchainState {
 
     /// Return the lustration status of the blockchain at the current tip.
     ///
-    /// If the lustration rule is not yet active, returns None.
+    /// If the lustration rule is not yet active, returns `None`.
     ///
     /// # Panics
     /// - If lustration rules have been activated, but no lustration status can

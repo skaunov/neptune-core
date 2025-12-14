@@ -27,6 +27,7 @@ use rand::distr::SampleString;
 use tokio::net::TcpListener;
 use tokio::task::JoinHandle;
 
+#[derive(Debug)] // I just do not know yet how to silence the warning on this.
 pub struct GenesisNode {
     pub gsl: GlobalStateLock,
 

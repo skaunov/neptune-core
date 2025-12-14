@@ -19,7 +19,7 @@ Let’s say you want to add a new method called `submit_block`.
    * In `json_rpc::core::api::rpc::RpcApi`, add two async functions:
 
      ```rust
-     /// Documentation goes here
+     /// Documentation goes here.
      async fn submit_block(
          &self,
          block: RpcBlock,

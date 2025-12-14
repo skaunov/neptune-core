@@ -10,42 +10,45 @@ use neptune_cash::api::export::Timestamp;
 use neptune_cash::api::export::TransparentTransactionInfo;
 use neptune_cash::api::export::TxProvingCapability;
 use neptune_cash::api::tx_initiation::error::SendError;
+use neptune_cash::util_types::proof_of_transfer;
 use num_traits::ops::checked::CheckedSub;
 use num_traits::Zero;
+use tasm_lib::triton_vm::prelude::BFieldElement;
+use tasm_lib::twenty_first::prelude::Mmr;
+use tracing::debug;
+use tracing_test::traced_test;
 
-/// test: alice sends funds to herself onchain
+/// test: Alice sends funds to herself onchain
 ///
-/// this is a basic test that block generation and
-/// a simple payment works without error.
+/// this is a basic test that block generation and a simple payment works without error
 ///
-/// scenario:
+/// scenario
 /// 1. single unconnected node on regtest network
-/// 2. alice mine's 3 blocks to her own wallet.
-/// 3. alice sends a payment to herself.
+/// 2. Alice mine's 3 blocks to her own wallet
+/// 3. Alice sends a payment to herself
 #[tokio::test(flavor = "multi_thread")]
 pub async fn alice_sends_to_self() -> anyhow::Result<()> {
     logging::tracing_logger();
 
-    // start alice's node, without any peers.
+    // start Alice's node, without any peers
     let mut alice = GenesisNode::start_default_node().await?;
 
-    // alice generates receiving address
+    // Alice generates receiving address
     let alice_address = alice
         .gsl
         .api_mut()
         .wallet_mut()
-        .next_receiving_address(KeyType::Generation)
+        .next_receiving_address(KeyType::Pokolen)
         .await?;
 
-    // alice mines 3 blocks to her wallet
+    // Alice mines 3 blocks to her wallet
     alice
-        .gsl
-        .api_mut()
-        .regtest_mut()
-        .mine_blocks_to_wallet(3, false)
-        .await?;
+    .gsl
+    .api_mut()
+    .regtest_mut()
+    .mine_blocks_to_wallet(3, false).await?;
 
-    tracing::info!("alice mined 3 blocks!");
+    tracing::info!("Alice mined 3 blocks!");
 
     assert_eq!(
         alice.gsl.lock_guard().await.chain.tip().header().height,
@@ -74,43 +77,122 @@ pub async fn alice_sends_to_self() -> anyhow::Result<()> {
 
 /// test: alice sends funds to bob onchain with primitive witness capability
 ///
-/// see description of alice_sends_to_bob() for details
+/// see description of `alice_sends_to_bob()` for details
 #[tokio::test(flavor = "multi_thread")]
 pub async fn alice_sends_to_bob_with_primitive_witness_capability() -> anyhow::Result<()> {
     alice_sends_to_bob(
         &GenesisNode::cluster_id(None),
         TxProvingCapability::PrimitiveWitness,
-    )
-    .await
+    ).await?;
+
+    Ok(()) 
 }
 
 /// test: alice sends funds to bob onchain with proof collection capability
 ///
-/// see description of alice_sends_to_bob() for details
+/// see description of `alice_sends_to_bob()` for details
 #[tokio::test(flavor = "multi_thread")]
 pub async fn alice_sends_to_bob_with_proof_collection_capability() -> anyhow::Result<()> {
     alice_sends_to_bob(
         &GenesisNode::cluster_id(None),
         TxProvingCapability::PrimitiveWitness,
-    )
-    .await
+    ).await?;
+    Ok(())
 }
 
-/// test: alice sends funds to bob onchain with single proof capability
+/// test: Alice sends funds to Bob onchain with single proof capability
 ///
-/// see description of alice_sends_to_bob() for details
+/// see description of `alice_sends_to_bob()` for details
 #[tokio::test(flavor = "multi_thread")]
 pub async fn alice_sends_to_bob_with_single_proof_capability() -> anyhow::Result<()> {
     alice_sends_to_bob(
         &GenesisNode::cluster_id(None),
         TxProvingCapability::PrimitiveWitness,
     )
-    .await
+    .await?;
+    
+    Ok(())
 }
 
-/// test: alice sends funds to bob onchain
+/// test: Bob verifies a proof Alice made for him over the transfer (proving is a part of this one)
+/// 
+/// (single proof capability)
 ///
-/// this is a basic test of:
+/// see description of `alice_sends_to_bob()` for details
+#[traced_test]
+#[tokio::test(flavor = "multi_thread")]
+pub async fn alice_sends_to_bob_tritonverify() -> anyhow::Result<()> {
+    // let _ = tracing_subscriber::fmt()
+    // .with_test_writer()      // Critical: allows cargo test to capture output
+    // .with_max_level(tracing::Level::DEBUG)
+    // .try_init();     
+
+    let ([alice, bob], bob_address) = alice_sends_to_bob(
+        &GenesisNode::cluster_id(),
+        TxProvingCapability::PrimitiveWitness,
+    ).await?;
+
+    tracing::trace!["Alice proves the transfer"];
+    let tip_the = alice.gsl.lock(|gs| gs.chain.tip().hash()).await;
+    let (claim, proof) = proof_of_transfer::helper(alice.gsl.clone(), 0, 0, tip_the).await.unwrap();
+
+    tracing::trace!["Bob verifies the claim"];
+    
+    let bob_address = neptune_cash::state::wallet::address::pokolen_address::PokolenReceivingAddress::try_from(bob_address).unwrap();
+    
+    assert_eq!(
+        &claim.input[0..5], 
+        bob_address.receiver_postimage().values().into_iter().rev().collect::<Vec<BFieldElement>>().as_slice(), 
+        "Bob checks it's sent to his address"
+    );
+    
+    tracing::debug!["{:?}| `&claim.input`", &claim.input];
+    assert_eq!(
+        &claim.output[0..5], 
+        
+        // alice.gsl.api().wallet_mut().next_receiving_address(KeyType::ForTheGeneration).await.unwrap()
+        // .lock_script_hash().values().into_iter().rev().collect::<Vec<BFieldElement>>().as_slice(), 
+        
+        // alice_address.receiver_postimage().values().into_iter().rev().collect::<Vec<BFieldElement>>().as_slice(),
+        // "it's not from Alice"
+
+        // protocol::proof_abstractions::tasm::program::TritonProgram::hash(&protocol::consensus::type_scripts::native_currency::NativeCurrency)
+        // .values().into_iter().rev().collect::<Vec<BFieldElement>>().as_slice(),
+        
+        bob_address.lock_script().hash().0.values(),
+        "Bob checks he commands the sent coin"
+    );
+    
+    // it's expected that a good prover pass the block digest along the argument & claim: let's imagine here that piece of data was lost and we have only required minimum
+    let aocl_digest = tasm_lib::prelude::Digest::try_from(
+        &claim.output[10..15]//.iter().rev().cloned().collect::<Vec<BFieldElement>>()
+    ).unwrap();
+    match bob.gsl.lock_async(|gs| futures::FutureExt::boxed(async move {
+        let mut t = gs.chain.tip().clone();
+        debug!("{:?}| The height of the tip Bob starts traversing the chain from.", t.header().height);
+
+        while !t.header().height.is_genesis() {
+            if aocl_digest == t.mutator_set_accumulator_after().unwrap().aocl.bag_peaks() {return Some(t.hash())}
+
+            t = gs.chain.archival_state().get_block(t.header().prev_block_digest).await.unwrap().unwrap();
+        }
+
+        None
+    })).await {
+        Some(b) => tracing::trace!("{b}| Bob has the block of this digest which have the claimed AOCL"),
+        None => panic!["Bob has no canonical `Block` of the claimed AOCL"]
+    }
+    
+    Ok(assert!(tasm_lib::triton_vm::verify(
+        Default::default(),
+        &claim,
+        &proof,
+    ), "Triton verification failed: the argument does not prove the claim"))
+}
+
+/// helper: Alice sends funds to Bob onchain
+///
+/// this is a basic test of the following
 ///  * peer connectivity
 ///  * block generation
 ///  * block propagation between nodes
@@ -118,56 +200,56 @@ pub async fn alice_sends_to_bob_with_single_proof_capability() -> anyhow::Result
 ///  * transaction propagation between nodes
 ///  * receipt of payment on remote node
 ///
-/// scenario:
-/// 1. alice and bob run 2-node regtest network, from genesis.
-/// 2. alice and both each have no funds initially.
-/// 3. bob generates a receiving address and provides to alice (out of band).
-/// 4. alice mines 3 blocks to her own wallet.
-/// 5. alice sends a payment to bob.
-/// 6. bob verifies the unconfirmed balance matches payment amount.
+/// scenario
+/// 1. Alice and Bob run 2-node regtest network, from genesis.
+/// 2. Alice and both each have no funds initially.
+/// 3. Bob generates a receiving address and provides to Alice (out of band).
+/// 4. Alice mines 3 blocks to her own wallet.
+/// 5. Alice sends a payment to Bob.
+/// 6. Bob verifies the unconfirmed balance matches payment amount.
 pub async fn alice_sends_to_bob(
     cluster_id: &str,
     proving_capability: TxProvingCapability,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<(
+    [GenesisNode; 2], 
+    // [neptune_cash::state::wallet::address::pokolen_address::PokolenReceivingAddress; 2]
+    neptune_cash::api::export::ReceivingAddress
+)> {
     logging::tracing_logger();
     let timeout_secs = 15;
 
     let mut base_args = GenesisNode::default_args().await;
     base_args.tx_proving_capability = Some(proving_capability);
 
-    // alice and bob start 2 peer cluster (regtest)
+    // Alice and Bob start 2 peer cluster (regtest)
     let [mut alice, mut bob] =
         GenesisNode::start_connected_cluster(cluster_id, 2, Some(base_args), timeout_secs).await?;
 
-    // bob generates receiving address
+    // Bob generates receiving address
     let bob_address = bob
-        .gsl
-        .api_mut()
-        .wallet_mut()
-        .next_receiving_address(KeyType::Generation)
-        .await?;
+    .gsl
+    .api_mut()
+    .wallet_mut()
+    .next_receiving_address(KeyType::Pokolen).await?;
 
-    // alice mines 3 blocks to her wallet
+    // Alice mines 3 blocks to her wallet
     alice
-        .gsl
-        .api_mut()
-        .regtest_mut()
-        .mine_blocks_to_wallet(3, false)
-        .await?;
+    .gsl
+    .api_mut()
+    .regtest_mut()
+    .mine_blocks_to_wallet(3, false).await?;
 
-    tracing::info!("alice mined 3 blocks!");
+    tracing::info!("Alice mined 3 blocks!");
 
-    // wait 5 seconds to allow block to propagate to bob's node.
-    // otherwise bob's node might receive the Tx before accepting the latest block
-    // in which case it will reject it.  see issue 560
-    // https://github.com/Neptune-Crypto/neptune-core/issues/560
-    // when that is fixed, this line should be removed.
+    /* Wait 5 seconds to allow block to propagate to bob's node. Otherwise Bob's node might receive the tx before accepting the latest block in which case it will reject it.  
+    
+    When https://github.com/Neptune-Crypto/neptune-core/issues/560 is fixed, this line should be removed. */
     tokio::time::sleep(std::time::Duration::from_secs(5)).await;
 
-    // alice checks that payment is reflected in her unconfirmed wallet balance
+    // Alice checks that payment is reflected in her unconfirmed wallet balance
     let alice_balances_before_send = alice.gsl.api().wallet().balances(Timestamp::now()).await;
     tracing::info!(
-        "alice balances before send:\n{}",
+        "Alice balances before send:\n{}",
         alice_balances_before_send
     );
 
@@ -176,7 +258,7 @@ pub async fn alice_sends_to_bob(
         3u64.into()
     );
 
-    // alice sends a payment to bob
+    // Alice sends a payment to Bob
     let payment_amount = NativeCurrencyAmount::coins_from_str("2.45")?;
     let fee_amount = NativeCurrencyAmount::coins_from_str("0.01")?;
     let accept_lustrations = true;
@@ -194,13 +276,15 @@ pub async fn alice_sends_to_bob(
         )
         .await?;
 
-    tracing::info!("tx sent! {}", tx_artifacts);
+    tracing::debug!("tx sent! {}", tx_artifacts);
+    // let tx_details = tx_artifacts.details();
+    // debug_assert_eq!(tx_details.tx_outputs.len(), 1, "just to check @skaunov understanding");
 
-    // alice checks that payment is reflected in her unconfirmed wallet balance (only)
+    // Alice checks that payment is reflected in her unconfirmed wallet balance (only)
     let alice_balances_after_send = alice.gsl.api().wallet().balances(Timestamp::now()).await;
 
-    tracing::info!("alice balances after send:\n{}", alice_balances_after_send);
-    tracing::info!("alice spend_amount:\n{}", alice_spend_amount);
+    tracing::info!("Alice balances after send:\n{}", alice_balances_after_send);
+    tracing::info!("Alice spend_amount:\n{}", alice_spend_amount);
 
     assert_eq!(
         alice_balances_after_send.confirmed_available,
@@ -210,38 +294,28 @@ pub async fn alice_sends_to_bob(
         alice_balances_after_send.unconfirmed_available,
         alice_balances_after_send
             .confirmed_available
-            .checked_sub(&alice_spend_amount)
-            .unwrap()
+            .checked_sub(&alice_spend_amount).unwrap()
     );
 
-    // bob waits until he has an unconfirmed balance discrepancy
-    // indicating the tx has arrived in his mempool.
+    // Bob waits until he has an unconfirmed balance discrepancy indicating the tx has arrived in his mempool.
     bob.wait_until_unconfirmed_balance(timeout_secs).await?;
 
-    // alice waits until tx has been upgraded to single-proof in mempool
-    // which is necessary before it can be included in a block.
-    alice
-        .wait_until_tx_in_mempool_has_single_proof(tx_artifacts.transaction().txid(), timeout_secs)
-        .await?;
+    // Alice waits until tx has been upgraded to single-proof in mempool which is necessary before it can be included in a block.
+    alice.wait_until_tx_in_mempool_has_single_proof(tx_artifacts.transaction().txid(), timeout_secs).await?;
 
-    // bob checks balances are correct.
+    // Bob checks balances are correct.
     let bob_balances = bob.gsl.api().wallet().balances(Timestamp::now()).await;
     assert_eq!(bob_balances.unconfirmed_available, payment_amount);
     assert!(bob_balances.confirmed_available.is_zero());
 
-    // alice mines another block to her wallet
-    let include_mempool_txs = true;
-    alice
-        .gsl
-        .api_mut()
-        .regtest_mut()
-        .mine_blocks_to_wallet(1, include_mempool_txs)
-        .await?;
+    // Alice mines another block to her wallet
+    alice.gsl.api_mut().regtest_mut()
+    .mine_blocks_to_wallet(1, true).await?;
 
-    // alice checks that confirmed and unconfirmed balances are equal.
+    // Alice checks that confirmed and unconfirmed balances are equal.
     let alice_balances_after_confirmed = alice.gsl.api().wallet().balances(Timestamp::now()).await;
     println!(
-        "alice balances after confirmed:\n{}",
+        "Alice balances after confirmed:\n{}",
         alice_balances_after_confirmed
     );
     assert_eq!(
@@ -251,18 +325,24 @@ pub async fn alice_sends_to_bob(
 
     bob.wait_until_block_height(4, timeout_secs).await?;
 
-    // bob checks payment is reflected in his confirmed wallet balance
+    // Bob checks payment is reflected in his confirmed wallet balance
     let bob_balances = bob.gsl.api().wallet().balances(Timestamp::now()).await;
     assert_eq!(bob_balances.confirmed_available, payment_amount);
     assert_eq!(bob_balances.unconfirmed_available, payment_amount);
 
-    Ok(())
+    Ok((
+        [alice, bob], 
+        // [
+            bob_address//.try_into().unwrap(), 
+            // alice_adr_guesser_0
+        // ]
+    ))
 }
 
-/// test: alice sends funds to random key.
+/// test: Alice sends funds to random key
 ///
-/// this test is essentially a copy of alice_sends_to_bob()
-/// but uses a single node instead of two.
+/// this test is essentially a copy of [`alice_sends_to_bob()`]
+/// but uses a single node instead of two
 ///
 /// This simplifies the scenario and the logged output.
 #[tokio::test(flavor = "multi_thread")]
@@ -270,15 +350,15 @@ pub async fn alice_sends_to_random_key() -> anyhow::Result<()> {
     logging::tracing_logger();
     let timeout_secs = 5;
 
-    // alice starts a single node cluster
+    // Alice starts a single node cluster
     let [mut alice] =
         GenesisNode::start_connected_cluster(&GenesisNode::cluster_id(None), 1, None, timeout_secs)
             .await?;
 
-    // alice generates a random symmetric key outside her wallet.
+    // Alice generates a random symmetric key outside her wallet.
     let other_address = SymmetricKey::from_seed(rand::random());
 
-    // alice mines 3 blocks to her wallet
+    // Alice mines 3 blocks to her wallet
     alice
         .gsl
         .api_mut()
@@ -288,7 +368,7 @@ pub async fn alice_sends_to_random_key() -> anyhow::Result<()> {
 
     tracing::info!("alice mined 3 blocks!");
 
-    // alice checks that she received some funds from mining efforts.
+    // Alice checks that she received some funds from mining efforts.
     let alice_balances_before_send = alice.gsl.api().wallet().balances(Timestamp::now()).await;
     tracing::info!(
         "alice balances before send:\n{}",
@@ -300,7 +380,7 @@ pub async fn alice_sends_to_random_key() -> anyhow::Result<()> {
         3u64.into()
     );
 
-    // alice sends a payment to the random key's "address".
+    // Alice sends a payment to the random key's "address".
     let payment_amount = NativeCurrencyAmount::coins_from_str("2.45")?;
     let fee_amount = NativeCurrencyAmount::coins_from_str("0.01")?;
     let alice_spend_amount = payment_amount + fee_amount;
@@ -320,7 +400,7 @@ pub async fn alice_sends_to_random_key() -> anyhow::Result<()> {
 
     tracing::info!("tx sent! {}", tx_artifacts);
 
-    // alice checks that payment is reflected in her unconfirmed wallet balance (only)
+    // Alice checks that payment is reflected in her unconfirmed wallet balance (only)
     let alice_balances_after_send = alice.gsl.api().wallet().balances(Timestamp::now()).await;
 
     tracing::info!("alice balances after send:\n{}", alice_balances_after_send);
@@ -378,25 +458,25 @@ pub async fn alice_sends_to_random_key() -> anyhow::Result<()> {
     Ok(())
 }
 
-/// test: alice sends funds to random key in a transparent transaction
+/// test: Alice sends funds to random key in a transparent transaction
 ///
-/// this test is essentially a copy of alice_sends_to_random_key()
-/// but uses a transparent transaction to do that. Verify that the produced
-/// [`Announcement`] matches with the inputs and outputs.
+/// This test is essentially a copy of [`alice_sends_to_random_key()`] but uses 
+/// a transparent transaction to do that. 
+/// Verify that the produced [`Announcement`] matches with the inputs and outputs.
 #[tokio::test(flavor = "multi_thread")]
 pub async fn alice_sends_transparent_transaction() -> anyhow::Result<()> {
     logging::tracing_logger();
     let timeout_secs = 5;
 
-    // alice starts a single node cluster
+    // Alice starts a single node cluster
     let [mut alice] =
         GenesisNode::start_connected_cluster(&GenesisNode::cluster_id(None), 1, None, timeout_secs)
             .await?;
 
-    // alice generates a random symmetric key outside her wallet.
+    // Alice generates a random symmetric key outside her wallet.
     let other_address = SymmetricKey::from_seed(rand::random());
 
-    // alice mines 3 blocks to her wallet
+    // Alice mines 3 blocks to her wallet
     alice
         .gsl
         .api_mut()
@@ -406,7 +486,7 @@ pub async fn alice_sends_transparent_transaction() -> anyhow::Result<()> {
 
     tracing::info!("alice mined 3 blocks!");
 
-    // alice checks that she received some funds from mining efforts.
+    // Alice checks that she received some funds from mining efforts.
     let alice_balances_before_send = alice.gsl.api().wallet().balances(Timestamp::now()).await;
     tracing::info!(
         "alice balances before send:\n{}",
@@ -418,7 +498,7 @@ pub async fn alice_sends_transparent_transaction() -> anyhow::Result<()> {
         3u64.into()
     );
 
-    // alice sends a payment to the random key's "address".
+    // Alice sends a payment to the random key's "address".
     let payment_amount = NativeCurrencyAmount::coins_from_str("2.45")?;
     let fee_amount = NativeCurrencyAmount::coins_from_str("0.01")?;
     let alice_spend_amount = payment_amount + fee_amount;
@@ -509,8 +589,7 @@ pub async fn alice_sends_transparent_transaction() -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Test: alice sends funds to bob onchain, but with a catch: the funds are
-/// time-locked.
+/// Test: Alice sends funds to Bob onchain, but with a catch: the funds are time-locked.
 ///
 /// The main purpose of this test is to verify that
 ///  - Alice can send funds even though the time-lock is attached.
@@ -519,15 +598,14 @@ pub async fn alice_sends_transparent_transaction() -> anyhow::Result<()> {
 ///  - Bob can spend the funds after the release date.
 ///
 /// scenario:
-/// 1. alice and bob run 2-node regtest network, from genesis.
-/// 2. alice and both each have no funds initially.
-/// 3. bob generates a receiving address and provides to alice (out of band).
-/// 4. alice mines 3 blocks to her own wallet.
-/// 5. alice sends a payment to bob, of which a portion is time-locked one year
+/// 1. Alice and Bob run 2-node regtest network, from genesis.
+/// 2. Alice and both each have no funds initially.
+/// 3. Bob generates a receiving address and provides to Alice (out of band).
+/// 4. Alice mines 3 blocks to her own wallet.
+/// 5. Alice sends a payment to Bob, of which a portion is time-locked one year
 ///    into the future.
 /// 6. that block gets mined.
-/// 7. Bob verifies the expected amount in "total" but less in "available"
-///    balance.
+/// 7. Bob verifies the expected amount in "total" but less in "available" balance.
 /// 8. Bob attempts to send everything to Alice but fails because you cannot
 ///    spend time-locked money before the release date.
 /// 9. One year passes. The time-lock is expired.
@@ -549,7 +627,7 @@ pub async fn alice_sends_time_locked_funds() -> anyhow::Result<()> {
         .gsl
         .api_mut()
         .wallet_mut()
-        .next_receiving_address(KeyType::Generation)
+        .next_receiving_address(KeyType::Pokolen)
         .await?;
 
     // alice mines 3 blocks to her wallet
@@ -681,7 +759,7 @@ pub async fn alice_sends_time_locked_funds() -> anyhow::Result<()> {
         .gsl
         .api_mut()
         .wallet_mut()
-        .next_receiving_address(KeyType::Generation)
+        .next_receiving_address(KeyType::Pokolen)
         .await?;
     let accept_lustrations = true;
     let tx_initiation_result_immediate = bob

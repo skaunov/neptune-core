@@ -1,14 +1,11 @@
-//! provides an abstraction over key and address types.
+//! provides an abstraction over key and address types
 
-use anyhow::bail;
 use anyhow::Result;
-#[cfg(any(test, feature = "arbitrary-impls"))]
-use arbitrary::Arbitrary;
 use serde::Deserialize;
 use serde::Serialize;
 use tasm_lib::triton_vm::prelude::Digest;
 
-use super::generation_address;
+use super::pokolen_address;
 use super::symmetric_key;
 use crate::api::export::KeyType;
 use crate::application::config::network::Network;
@@ -22,12 +19,12 @@ use crate::state::wallet::address::viewing_address::VIEWING_ADDRESS_FLAG;
 use crate::state::wallet::utxo_notification::UtxoNotificationPayload;
 use crate::BFieldElement;
 
-// note: assigning the flags to `KeyType` variants as discriminants has bonus
-// that we get a compiler verification that values do not conflict.  which is
+// Note: assigning the flags to `KeyType` variants as discriminants has bonus
+// that we get a compiler verification that values do not conflict. Which is
 // nice since they are (presently) defined in separate files.
 //
 // anyway it is a desirable property that KeyType variants match the values
-// actually stored in Announcement.
+// actually stored in Announcement
 
 /// Represents any type of Neptune receiving Address.
 ///
@@ -38,10 +35,10 @@ use crate::BFieldElement;
 #[cfg_attr(any(test, feature = "arbitrary-impls"), derive(Arbitrary))]
 #[non_exhaustive]
 pub enum ReceivingAddress {
-    /// a [generation_address]
-    Generation(Box<generation_address::GenerationReceivingAddress>),
+    /// a [`pokolen_address`]
+    Pokolen(Box<pokolen_address::PokolenReceivingAddress>),
 
-    /// a [symmetric_key] acting as an address.
+    /// a [`symmetric_key`] acting as an address.
     Symmetric(symmetric_key::SymmetricKey),
 
     /// An address that should only be known by sender and receiver.
@@ -59,15 +56,15 @@ pub enum ReceivingAddress {
     ViewingAddress(viewing_address::ViewingAddress),
 }
 
-impl From<generation_address::GenerationReceivingAddress> for ReceivingAddress {
-    fn from(a: generation_address::GenerationReceivingAddress) -> Self {
-        Self::Generation(Box::new(a))
+impl From<pokolen_address::PokolenReceivingAddress> for ReceivingAddress {
+    fn from(a: pokolen_address::PokolenReceivingAddress) -> Self {
+        Self::Pokolen(Box::new(a))
     }
 }
 
-impl From<&generation_address::GenerationReceivingAddress> for ReceivingAddress {
-    fn from(a: &generation_address::GenerationReceivingAddress) -> Self {
-        Self::Generation(Box::new(*a))
+impl From<&pokolen_address::PokolenReceivingAddress> for ReceivingAddress {
+    fn from(a: &pokolen_address::PokolenReceivingAddress) -> Self {
+        Self::Pokolen(Box::new(*a))
     }
 }
 
@@ -95,15 +92,13 @@ impl From<viewing_address::ViewingAddress> for ReceivingAddress {
     }
 }
 
-impl TryFrom<ReceivingAddress> for generation_address::GenerationReceivingAddress {
+impl TryFrom<ReceivingAddress> for pokolen_address::PokolenReceivingAddress {
     type Error = anyhow::Error;
 
     fn try_from(a: ReceivingAddress) -> Result<Self> {
-        let ReceivingAddress::Generation(a) = a else {
-            bail!("not a generation address");
-        };
-
-        Ok(*a)
+        if let ReceivingAddress::Pokolen(a) = a {Ok(*a)} else {
+            Err(anyhow::anyhow!("not an address for the generation"))
+        }
     }
 }
 
@@ -111,7 +106,7 @@ impl ReceivingAddress {
     /// returns `receiver_identifier`
     pub fn receiver_identifier(&self) -> BFieldElement {
         match self {
-            Self::Generation(a) => a.receiver_identifier(),
+            Self::Pokolen(a) => a.receiver_identifier(),
             Self::Symmetric(a) => a.receiver_identifier(),
             Self::EcHybrid(a) => a.receiver_id(),
             Self::ViewingAddress(a) => a.receiver_id(),
@@ -124,6 +119,13 @@ impl ReceivingAddress {
             ReceivingAddress::Symmetric(_) => SYMMETRIC_KEY_FLAG,
             ReceivingAddress::EcHybrid(_) => ELLIPTIC_CURVE_HYBRID_ADDRESS_FLAG,
             ReceivingAddress::ViewingAddress(_) => VIEWING_ADDRESS_FLAG,
+        }
+    }
+
+    pub(crate) fn flag(&self) -> BFieldElement {
+        match self {
+            ReceivingAddress::Pokolen(addr) => addr.flag(),
+            ReceivingAddress::Symmetric(addr) => addr.flag(),
         }
     }
 
@@ -141,8 +143,8 @@ impl ReceivingAddress {
         utxo_notification_payload: UtxoNotificationPayload,
     ) -> Announcement {
         match self {
-            ReceivingAddress::Generation(addr) => {
-                addr.generate_announcement(&utxo_notification_payload)
+            ReceivingAddress::Pokolen(generation_receiving_address) => {
+                generation_receiving_address.generate_announcement(&utxo_notification_payload)
             }
             ReceivingAddress::Symmetric(symmetric_key) => {
                 symmetric_key.generate_announcement(&utxo_notification_payload)
@@ -162,8 +164,9 @@ impl ReceivingAddress {
         network: Network,
     ) -> String {
         match self {
-            ReceivingAddress::Generation(addr) => {
-                addr.private_utxo_notification(&utxo_notification_payload, network)
+            ReceivingAddress::Pokolen(generation_receiving_address) => {
+                generation_receiving_address
+                    .private_utxo_notification(&utxo_notification_payload, network)
             }
             ReceivingAddress::Symmetric(symmetric_key) => {
                 symmetric_key.private_utxo_notification(&utxo_notification_payload, network)
@@ -177,11 +180,10 @@ impl ReceivingAddress {
         }
     }
 
-    /// returns a privacy digest which is the post-image of privacy preimage of
-    /// the matching [SpendingKey](super::SpendingKey)
+    /// returns a privacy digest which is the post-image of privacy preimage of the matching [`SpendingKey`](super::SpendingKey)
     pub fn privacy_digest(&self) -> Digest {
         match self {
-            Self::Generation(a) => a.receiver_postimage(),
+            Self::Pokolen(a) => a.receiver_postimage(),
             Self::Symmetric(k) => k.receiver_postimage(),
             Self::EcHybrid(a) => a.receiver_postimage(),
             Self::ViewingAddress(a) => a.receiver_postimage(),
@@ -195,7 +197,7 @@ impl ReceivingAddress {
         utxo_notification_payload: &UtxoNotificationPayload,
     ) -> Vec<BFieldElement> {
         match self {
-            Self::Generation(a) => a.encrypt(utxo_notification_payload),
+            Self::Pokolen(a) => a.encrypt(utxo_notification_payload),
             Self::Symmetric(a) => a.encrypt(utxo_notification_payload),
             Self::EcHybrid(a) => a.encrypt(utxo_notification_payload),
             Self::ViewingAddress(a) => a.encrypt(utxo_notification_payload),
@@ -214,7 +216,7 @@ impl ReceivingAddress {
     /// For most uses, prefer [Self::to_display_bech32m()] instead.
     pub fn to_bech32m(&self, network: Network) -> Result<String> {
         match self {
-            Self::Generation(k) => k.to_bech32m(network),
+            Self::Pokolen(k) => k.to_bech32m(network),
             Self::Symmetric(k) => k.to_bech32m(network),
             Self::EcHybrid(a) => Ok(a.to_bech32m(network)),
             Self::ViewingAddress(a) => Ok(a.to_bech32m(network)),
@@ -254,7 +256,7 @@ impl ReceivingAddress {
     ///  bech32m encoded instead of the key itself.
     pub fn to_display_bech32m(&self, network: Network) -> anyhow::Result<String> {
         match self {
-            Self::Generation(k) => k.to_bech32m(network),
+            Self::Pokolen(k) => k.to_bech32m(network),
             Self::Symmetric(k) => k.to_display_bech32m(network),
             Self::EcHybrid(a) => Ok(a.to_bech32m(network)),
             Self::ViewingAddress(a) => Ok(a.to_bech32m(network)),
@@ -300,7 +302,7 @@ impl ReceivingAddress {
 
         if encoded.starts_with(generation_address::HRP_PREFIX) {
             return Ok(
-                generation_address::GenerationReceivingAddress::from_bech32m(encoded, network)?
+                pokolen_address::PokolenReceivingAddress::from_bech32m(encoded, network)?
                     .into(),
             );
         }
@@ -321,16 +323,16 @@ impl ReceivingAddress {
     /// Returns the address's lock script hash.
     ///
     /// In the general case, only the receiver knows the lock script.
-    pub fn lock_script_hash(&self) -> Digest {
+    pub fn lock_script_hash(&self) -> crate::protocol::consensus::transaction::lock_script::DigestLockScript {
         match self {
-            Self::Generation(x) => x.lock_script().hash(),
+            Self::Pokolen(x) => x.lock_script().hash(),
             Self::Symmetric(x) => x.lock_script().hash(),
             Self::EcHybrid(x) => x.lock_script().hash(),
             Self::ViewingAddress(x) => x.lock_script().hash(),
         }
     }
 
-    /// returns true if the [Announcement] has a type-flag that matches the type of this address.
+    /// returns `true` if the [Announcement] has a type-flag that matches the type of this address
     pub fn matches_announcement_key_type(&self, pa: &Announcement) -> bool {
         matches!(KeyType::try_from(pa), Ok(kt) if kt == KeyType::from(self))
     }

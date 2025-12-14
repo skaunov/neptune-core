@@ -480,8 +480,7 @@ impl TransactionInitiator {
         .await
     }
 
-    /// Build a transaction without broadcasting it or inserting it into the
-    /// mempool.
+    /// Build a transaction without broadcasting it or inserting it into the mempool.
     ///
     /// This function grabs a write lock on the global state and may thus mutate
     /// the global state.
@@ -498,8 +497,8 @@ impl TransactionInitiator {
 
         tracing::debug!("tx send initiated.");
 
-        // Hold read lock across entire transaction construction to avoid race
-        // conditions from e.g. a new block being set as tip.
+        /* Hold read lock across entire transaction construction to avoid race
+        conditions from e.g. a new block being set as tip. */
         // generate outputs
         let write_lock = self.global_state_lock.lock_guard_mut().await;
         let write_lock = StateLock::WriteGuard(write_lock);
@@ -512,8 +511,7 @@ impl TransactionInitiator {
             timestamp,
             transparent,
             input_selection_policy,
-        )
-        .await
+        ).await
     }
 
     fn private(&self) -> super::private::TransactionInitiatorPrivate {

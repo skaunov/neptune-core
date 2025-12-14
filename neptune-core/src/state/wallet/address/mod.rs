@@ -4,12 +4,12 @@
 //! and it will probably be renamed in a future commit.
 //!
 //! (especially since we now have a key type with no corresponding address)
+pub mod pokolen_address;
 mod addressable_key;
 pub mod announcement_flag;
 mod common;
 pub mod elliptic_curve_hybrid;
 pub mod encrypted_utxo_notification;
-pub mod generation_address;
 mod receiving_address;
 pub mod symmetric_key;
 pub mod viewing_address;
@@ -21,6 +21,8 @@ pub use receiving_address::ReceivingAddress;
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
+    use pokolen_address::PokolenSpendingKey;
+    use pokolen_address::PokolenReceivingAddress;
     use proptest_arbitrary_interop::arb;
     use rand::random;
     use rand::Rng;

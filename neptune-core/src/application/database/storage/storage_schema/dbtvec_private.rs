@@ -102,13 +102,13 @@ where
         (key_prefix_key, const_length_key).into()
     }
 
-    /// Return the length at the last write to disk
+    /// return the length at the last write to disk
     #[inline]
     pub(super) async fn persisted_length(&self) -> Option<Index> {
         self.reader
-            .get(Self::get_length_key(self.key_prefix))
-            .await
-            .map(|v| v.into_any())
+        .get(Self::get_length_key(self.key_prefix))
+        .await
+        .map(|v| v.into_any())
     }
 
     /// Return the key of K type used to store the element at a given index of Index type

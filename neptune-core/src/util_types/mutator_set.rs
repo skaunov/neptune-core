@@ -44,8 +44,7 @@ pub enum MutatorSetError {
     },
 }
 
-/// Generates an addition record from an item and explicit random-
-/// ness. The addition record is itself a commitment to the item.
+/// Generates an addition record from an item and explicit randomness. The addition record is itself a commitment to the item.
 pub fn commit(item: Digest, sender_randomness: Digest, receiver_digest: Digest) -> AdditionRecord {
     let canonical_commitment =
         Tip5::hash_pair(Tip5::hash_pair(item, sender_randomness), receiver_digest);

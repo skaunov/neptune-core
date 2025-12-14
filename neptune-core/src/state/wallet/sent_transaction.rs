@@ -10,9 +10,9 @@ use crate::state::wallet::transaction_output::TxOutputList;
 
 pub(crate) type AoclLeafIndex = u64;
 
-/// represents a user-level tx that has been sent by this wallet.
+/// Represents a user-level tx that has been sent by this wallet.
 ///
-/// this type is intended for storing in the wallet-db in order to
+/// This type is intended for storing in the wallet-db in order to
 /// group together inputs and outputs as a single payment for purposes
 /// of wallet history display.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -21,7 +21,8 @@ pub struct SentTransaction {
     pub tx_outputs: TxOutputList,
     pub fee: NativeCurrencyAmount,
     pub timestamp: Timestamp,
-    pub tip_when_sent: Digest, // tip block when sent.  (not when confirmed)
+    /// Tip block when sent.  (not when confirmed)
+    pub tip_when_sent: Digest,
 }
 
 impl SentTransaction {

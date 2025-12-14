@@ -49,7 +49,6 @@ use crate::util_types::mutator_set::mutator_set_accumulator::MutatorSetAccumulat
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, GetSize)]
 pub struct Transaction {
     pub kernel: TransactionKernel,
-
     pub proof: TransactionProof,
 }
 
@@ -164,8 +163,7 @@ impl Transaction {
         })
     }
 
-    /// Determine whether the transaction is valid but not necessarily
-    /// confirmable.
+    /// Determine whether the transaction is valid but not necessarily confirmable.
     ///
     /// This method tests the transaction's internal consistency in isolation,
     /// without the context of the canonical chain.

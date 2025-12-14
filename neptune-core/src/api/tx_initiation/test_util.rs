@@ -33,14 +33,14 @@ impl From<GlobalStateLock> for TransactionInitiatorInternal {
 }
 
 impl TransactionInitiatorInternal {
-    /// note: this api only exists for legacy unit tests.
+    /// Note: this API only exists for legacy unit tests.
     ///
-    /// new tests should use TransactionSender::send() or
+    /// New tests should use `TransactionSender::send()` or
     /// `TransactionInitiator or a builder.
     ///
-    /// it is now just a wrapper around [`InputSelector`],
-    /// TransactionDetailsBuilder, TransactionProofBuilder and
-    /// TransactionBuilder
+    /// it is now just a wrapper around `TxInputListBuilder`,
+    /// `TransactionDetailsBuilder`, `TransactionProofBuilder` and
+    /// `TransactionBuilder`
     #[cfg(test)]
     pub(crate) async fn create_transaction(
         &mut self,
@@ -50,7 +50,7 @@ impl TransactionInitiatorInternal {
         tx_creation_config: TxCreationConfig,
         consensus_rule_set: ConsensusRuleSet,
     ) -> anyhow::Result<TxCreationArtifacts> {
-        // acquire lock.  write-lock is only needed if we must generate a
+        // Acquire lock.  Write-lock is only needed if we must generate a
         // new change receiving address.  However, that is also the most common
         // scenario.
         let mut state_lock = match tx_creation_config.change_policy() {

@@ -25,9 +25,7 @@ use super::LockType;
 /// atomic_car.lock_mut(|mut c| c.year = 2023);
 /// ```
 ///
-/// It is also possible to provide a name and callback fn
-/// during instantiation.  In this way, the application
-/// can easily trace lock acquisitions.
+/// It is also possible to provide a name and callback `fn` during instantiation.  In this way, the application can easily trace lock acquisitions.
 ///
 /// # Examples
 /// ```
@@ -61,7 +59,7 @@ use super::LockType;
 /// atomic_car.lock_mut(|mut c| {c.year = 2023});
 /// ```
 ///
-/// results in:
+/// results in
 /// ```text
 /// TryAcquire lock `car` of type `RwLock` for `Read` by
 ///     |-- thread main, `ThreadId(1)`

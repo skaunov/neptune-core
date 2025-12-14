@@ -9,6 +9,7 @@ use crate::api::export::TransactionProof;
 use crate::api::export::Utxo;
 use crate::application::json_rpc::core::model::block::transaction_kernel::RpcTransactionKernel;
 use crate::application::json_rpc::core::model::common::RpcBFieldElements;
+use crate::protocol::consensus::transaction::lock_script::DigestLockScript;
 use crate::protocol::consensus::transaction::utxo::Coin;
 use crate::protocol::consensus::transaction::validity::proof_collection::ProofCollection;
 use crate::state::wallet::utxo_notification::PrivateNotificationData;
@@ -55,7 +56,7 @@ impl From<RpcProofCollection> for ProofCollection {
             kernel_to_outputs: pc.kernel_to_outputs.into(),
             collect_type_scripts: pc.collect_type_scripts.into(),
             type_scripts_halt: pc.type_scripts_halt.into_iter().map(Into::into).collect(),
-            lock_script_hashes: pc.lock_script_hashes,
+            lock_script_hashes: pc.lock_script_hashes.into_iter().map(DigestLockScript).collect(),
             type_script_hashes: pc.type_script_hashes,
             kernel_mast_hash: pc.kernel_mast_hash,
             salted_inputs_hash: pc.salted_inputs_hash,
@@ -74,7 +75,7 @@ impl From<ProofCollection> for RpcProofCollection {
             kernel_to_outputs: pc.kernel_to_outputs.into(),
             collect_type_scripts: pc.collect_type_scripts.into(),
             type_scripts_halt: pc.type_scripts_halt.into_iter().map(Into::into).collect(),
-            lock_script_hashes: pc.lock_script_hashes,
+            lock_script_hashes: pc.lock_script_hashes.into_iter().map(|v| v.0).collect(),
             type_script_hashes: pc.type_script_hashes,
             kernel_mast_hash: pc.kernel_mast_hash,
             salted_inputs_hash: pc.salted_inputs_hash,
@@ -187,7 +188,7 @@ pub struct RpcUtxo {
 impl From<Utxo> for RpcUtxo {
     fn from(value: Utxo) -> Self {
         Self {
-            lock_script_hash: value.lock_script_hash(),
+            lock_script_hash: value.lock_script_hash().0,
             coins: value.coins().iter().map(|x| x.into()).collect(),
         }
     }
@@ -196,7 +197,7 @@ impl From<Utxo> for RpcUtxo {
 impl From<RpcUtxo> for Utxo {
     fn from(value: RpcUtxo) -> Self {
         Self::new(
-            value.lock_script_hash,
+            crate::protocol::consensus::transaction::lock_script::DigestLockScript(value.lock_script_hash),
             value.coins.into_iter().map(|x| x.into()).collect(),
         )
     }

@@ -37,18 +37,14 @@ pub enum Namespace {
     Chain,
     Mining,
     Archival,
-
-    /// Endpoints for inspecting the mempool status
+    /// endpoints for inspecting the mempool status
     Mempool,
-
-    /// Endpoints for serving external wallets
+    /// endpoints for serving external wallets
     Wallet,
-
-    /// Endpoints for managing personal wallet
+    /// endpoints for managing personal wallet
     Personal,
-
-    /// Endpoints relating to and requiring a UTXO index
-    Utxoindex,
+    /// endpoints relating to and requiring a UTXO index
+    UtxoIndex,
 }
 
 #[derive(
@@ -194,6 +190,12 @@ pub enum RpcMethods {
 
     #[namespace(Namespace::Personal)]
     ClaimUtxo,
+
+    #[namespace(Namespace::Personal)]
+    ProveAnTransfer,
+
+    #[namespace(Namespace::Personal)]
+    TritonVerify,
 
     #[namespace(Namespace::Mining)]
     GetBlockTemplate,

@@ -1,6 +1,5 @@
 use std::sync::OnceLock;
 
-use get_size2::GetSize;
 use serde::Deserialize;
 use serde::Serialize;
 use tasm_lib::library::Library;
@@ -12,7 +11,8 @@ use crate::protocol::proof_abstractions::tasm::program::TritonProgram;
 use crate::protocol::proof_abstractions::SecretWitness;
 
 /// Verifies that the coinbase *amount* is in line with the issuance schedule.
-#[derive(Debug, Clone, BFieldCodec, GetSize, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, BFieldCodec, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "arbitrary-impls"), derive(get_size2::GetSize))]
 pub struct CoinbaseIsValidWitness {
     pub block: Block,
 }
@@ -31,7 +31,8 @@ impl SecretWitness for CoinbaseIsValidWitness {
     }
 }
 
-#[derive(Debug, Clone, BFieldCodec, GetSize, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, BFieldCodec, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "arbitrary-impls"), derive(get_size2::GetSize))]
 pub struct CoinbaseIsValid {
     witness: CoinbaseIsValidWitness,
 }
@@ -52,7 +53,7 @@ impl TritonProgram for CoinbaseIsValid {
 #[cfg_attr(coverage_nightly, coverage(off))]
 pub mod tests {
     use super::*;
-    use crate::protocol::proof_abstractions::tasm::program::spec::TritonProgramSpecification;
+    use crate::protocol::proof_abstractions::tasm::program::tests::TritonProgramSpecification;
 
     impl TritonProgramSpecification for CoinbaseIsValid {
         fn source(&self) {

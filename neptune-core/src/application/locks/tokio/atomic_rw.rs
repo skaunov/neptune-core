@@ -344,10 +344,10 @@ impl<T> AtomicRw<T> {
         f(&mut guard)
     }
 
-    /// Immutably access the data of type `T` in an async closure and possibly return a result of type `R`
+    /// immutably access the data of type `T` in an `async` closure and possibly return a result of type `R`
     ///
-    /// The async callback uses dynamic dispatch and it is necessary to call
-    /// `.boxed()` on the closure's async block and have [`FutureExt`](futures::future::FutureExt) in scope.
+    /// The `async` callback uses dynamic dispatch and it is necessary to call
+    /// `.boxed()` on the closure's `async` block and have [`FutureExt`](futures::future::FutureExt) in scope.
     ///
     /// # Examples
     /// ```

@@ -462,7 +462,7 @@ mod tests {
 
     use super::*;
     use crate::api::export::Announcement;
-    use crate::api::export::GenerationSpendingKey;
+    use crate::api::export::PokolenSpendingKey;
     use crate::api::export::Network;
     use crate::tests::shared::blocks::block_with_num_puts;
     use crate::tests::shared::blocks::invalid_empty_block_with_announcements;
@@ -663,7 +663,7 @@ mod tests {
             inputs.clone(),
             vec![an_addition_record],
             None,
-            GenerationSpendingKey::derive_from_seed(Digest::default()),
+            PokolenSpendingKey::derive_from_seed(Digest::default()),
             Digest::default(),
             network,
         )
@@ -673,7 +673,7 @@ mod tests {
             inputs,
             vec![an_addition_record, an_addition_record],
             None,
-            GenerationSpendingKey::derive_from_seed(Digest::default()),
+            PokolenSpendingKey::derive_from_seed(Digest::default()),
             Digest::default(),
             network,
         )

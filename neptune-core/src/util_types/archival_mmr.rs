@@ -1,5 +1,3 @@
-use std::ops::RangeInclusive;
-
 use itertools::Itertools;
 use tasm_lib::prelude::Tip5;
 use tasm_lib::twenty_first::tip5::digest::Digest;
@@ -206,11 +204,10 @@ impl<Storage: StorageVec<Digest>> ArchivalMmr<Storage> {
     /// Get a range of leafs from the MMR.
     ///
     /// # Panics
-    ///
     ///  - If the range contains out-of-bound indices.
     pub async fn get_leaf_range_inclusive_async(
         &self,
-        leaf_index_range: RangeInclusive<u64>,
+        leaf_index_range: std::ops::RangeInclusive<u64>,
     ) -> Vec<Digest> {
         // Use debug-assert here to limit this lookup to *one* db-lookup in
         // production. Otherwise, it would be two lookups.

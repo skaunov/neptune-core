@@ -7,4 +7,3 @@ pub mod loops;
 pub mod network;
 pub mod rpc;
 pub mod triton_vm_job_queue;
-pub mod util_proof;

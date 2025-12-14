@@ -12,7 +12,7 @@ use twenty_first::math::b_field_element::BFieldElement;
 use twenty_first::util_types::mmr::mmr_trait::Mmr;
 
 use crate::api::export::Announcement;
-use crate::api::export::GenerationSpendingKey;
+use crate::api::export::PokolenSpendingKey;
 use crate::api::export::GlobalStateLock;
 use crate::api::export::Network;
 use crate::api::export::OutputFormat;
@@ -49,9 +49,8 @@ use crate::protocol::consensus::transaction::transaction_kernel::TransactionKern
 use crate::protocol::consensus::transaction::validity::neptune_proof::Proof;
 use crate::protocol::consensus::transaction::Transaction;
 use crate::protocol::proof_abstractions::tasm::program::TritonVmProofJobOptions;
-use crate::protocol::proof_abstractions::verifier::cache_true_claims;
-use crate::state::wallet::address::generation_address;
-use crate::state::wallet::address::generation_address::GenerationReceivingAddress;
+use crate::state::wallet::address::pokolen_address;
+use crate::state::wallet::address::pokolen_address::PokolenReceivingAddress;
 use crate::state::wallet::expected_utxo::ExpectedUtxo;
 use crate::tests::shared::mock_tx::send_coins;
 use crate::tests::shared::Randomness;
@@ -135,7 +134,7 @@ pub(crate) async fn block_with_puts(
         inputs,
         outputs,
         None,
-        GenerationSpendingKey::derive_from_seed(rng.random()),
+        PokolenSpendingKey::derive_from_seed(rng.random()),
         rng.random(),
         network,
     )
@@ -250,7 +249,7 @@ pub(crate) async fn make_mock_block_with_puts_and_guesser_preimage_and_guesser_f
     inputs: Vec<RemovalRecord>,
     outputs: Vec<AdditionRecord>,
     block_timestamp: Option<Timestamp>,
-    composer_key: generation_address::GenerationSpendingKey,
+    composer_key: pokolen_address::PokolenSpendingKey,
     coinbase_sender_randomness: Digest,
     guesser_parameters: (f64, ReceivingAddress),
     network: Network,
@@ -363,7 +362,7 @@ pub(crate) async fn block_with_num_puts(
         inputs,
         outputs,
         None,
-        GenerationSpendingKey::derive_from_seed(rng.random()),
+        PokolenSpendingKey::derive_from_seed(rng.random()),
         rng.random(),
         network,
     )
@@ -379,7 +378,7 @@ pub(crate) async fn block_with_num_puts(
 pub(crate) async fn make_mock_block(
     previous_block: &Block,
     block_timestamp: Option<Timestamp>,
-    composer_key: generation_address::GenerationSpendingKey,
+    composer_key: pokolen_address::PokolenSpendingKey,
     coinbase_sender_randomness: Digest,
     network: Network,
 ) -> (Block, Vec<ExpectedUtxo>) {
@@ -404,12 +403,12 @@ pub(crate) async fn make_mock_block_with_inputs_and_outputs(
     inputs: Vec<RemovalRecord>,
     outputs: Vec<AdditionRecord>,
     block_timestamp: Option<Timestamp>,
-    composer_key: generation_address::GenerationSpendingKey,
+    composer_key: pokolen_address::PokolenSpendingKey,
     coinbase_sender_randomness: Digest,
     network: Network,
 ) -> (Block, Vec<ExpectedUtxo>) {
     let deterministic_generation_spending_key =
-        GenerationSpendingKey::derive_from_seed(Digest::default());
+        PokolenSpendingKey::derive_from_seed(Digest::default());
     let guesser_address = deterministic_generation_spending_key.to_address();
     make_mock_block_with_puts_and_guesser_preimage_and_guesser_fraction(
         previous_block,
@@ -481,14 +480,14 @@ pub(crate) async fn invalid_empty_block1_with_guesser_fraction(
 ) -> Block {
     let genesis = Block::genesis(network);
     let mut rng: StdRng = SeedableRng::seed_from_u64(222555000140);
-    let guesser_receiver = GenerationReceivingAddress::derive_from_seed(rng.random());
+    let guesser_receiver = PokolenReceivingAddress::derive_from_seed(rng.random());
 
     make_mock_block_with_puts_and_guesser_preimage_and_guesser_fraction(
         &genesis,
         vec![],
         vec![],
         None,
-        GenerationSpendingKey::derive_from_seed(rng.random()),
+        PokolenSpendingKey::derive_from_seed(rng.random()),
         rng.random(),
         (guesser_fraction, guesser_receiver.into()),
         network,
@@ -595,13 +594,9 @@ pub(crate) async fn fake_valid_block_proposal_from_tx(
         let block_proof_witness = BlockProofWitness::produce(primitive_witness);
         let appendix = block_proof_witness.appendix();
         let claim = BlockProgram::claim(&body, &appendix);
-        cache_true_claims([claim.clone()]).await;
+        crate::protocol::proof_abstractions::verifier::cache_true_claims([claim.clone()]).await;
         (appendix, BlockProof::SingleProof(Proof::invalid()))
-    };
-
-    Block::new(header, body, appendix, proof)
 }
-
 /// Create a block from a transaction without the hassle of proving but such
 /// that it appears valid.
 async fn fake_valid_block_from_block_tx_for_tests(
@@ -663,7 +658,7 @@ pub async fn fake_block_successor_with_merged_tx(
     let (mut seed_bytes, mut seed_digests) = (rness.bytes_arr.to_vec(), rness.digests.to_vec());
 
     let coinbase_reward_address =
-        GenerationReceivingAddress::derive_from_seed(seed_digests.pop().unwrap());
+        PokolenReceivingAddress::derive_from_seed(seed_digests.pop().unwrap());
     let coinbase_distribution = CoinbaseDistribution::solo(coinbase_reward_address.into());
     let composer_parameters = ComposerParameters::new(
         coinbase_distribution,

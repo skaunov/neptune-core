@@ -1,9 +1,7 @@
-//! LevelDB provides atomic writes to a database.  However each database is a
-//! simple key/value store.  There is no logical sub-unit of a database that we
+//! LevelDB provides atomic writes to a database.  However each database is a simple key/value store.  There is no logical sub-unit of a database that we
 //! might call a "Table" or `struct`.
 //!
-//! This makes it difficult for rust code to have multiple `struct` stored in a
-//! single DB with atomic updates.
+//! This makes it difficult for Rust code to have multiple `struct` stored in a single DB with atomic updates.
 //!
 //! This module provides a virtual DB Schema with logical "tables" that are
 //! backed by key/val pairs in a single LevelDB database.
@@ -17,7 +15,7 @@
 //! in a single atomic batch operation.
 //!
 //! Important: write operations are not written until
-//! SimpleRustyStorage::persist() is called.
+//! `SimpleRustyStorage::persist()` is called.
 
 mod dbtmap;
 mod dbtmap_private;

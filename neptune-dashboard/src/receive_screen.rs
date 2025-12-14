@@ -69,7 +69,7 @@ impl ReceiveScreen {
 
             tokio::spawn(async move {
                 let receiving_address = rpc_client
-                    .latest_address(context::current(), token, KeyType::Generation)
+                    .latest_address(context::current(), token, KeyType::Pokolen)
                     .await
                     .unwrap()
                     .unwrap();
@@ -90,7 +90,7 @@ impl ReceiveScreen {
         tokio::spawn(async move {
             *generating.lock().unwrap() = true;
             let receiving_address = rpc_client
-                .next_receiving_address(context::current(), token, KeyType::Generation)
+                .next_receiving_address(context::current(), token, KeyType::Pokolen)
                 .await
                 .unwrap()
                 .unwrap();

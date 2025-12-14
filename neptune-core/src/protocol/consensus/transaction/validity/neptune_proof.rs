@@ -32,10 +32,10 @@ enum MockProofBehavior {
 /// explicitly disallowed on Mainnet.  See
 /// [Network::use_mock_proof()](crate::application::config::network::Network::use_mock_proof()).
 ///
-/// The proof can be of three types:
-/// 1. standard.      not a mock proof
-/// 2. valid-mock.    a mock proof that passes validation (if mock proofs are allowed)
-/// 3. invalid-mock.  a mock proof that fails validation (if mock proofs are allowed, or not)
+/// The proof can be of three types.
+/// 1. standard      not a mock proof
+/// 2. valid-mock    a mock proof that passes validation (if mock proofs are allowed)
+/// 3. invalid-mock  a mock proof that fails validation (if mock proofs are allowed, or not)
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, GetSize)]
 #[cfg_attr(any(test, feature = "arbitrary-impls"), derive(arbitrary::Arbitrary))]
 pub struct NeptuneProof {
@@ -186,7 +186,8 @@ impl NeptuneProof {
     }
 }
 
-// Proof is aliased to NeptuneProof this is done to avoid lots of diffs
-// wherever Proof is used.  we can remove this alias if/when code is updated to
-// use NeptuneProof directly
+// `Proof` is aliased to `NeptuneProof` this is done to avoid lots of diffs
+// wherever `Proof` is used.
+/* we can remove this alias if/when code is updated to
+use `NeptuneProof` directly */
 pub type Proof = NeptuneProof;

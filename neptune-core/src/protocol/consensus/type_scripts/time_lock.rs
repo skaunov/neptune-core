@@ -585,7 +585,8 @@ impl TypeScript for TimeLock {
     type State = Timestamp;
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, BFieldCodec, GetSize, PartialEq, Eq)]
+#[derive(Debug, Clone, Deserialize, Serialize, BFieldCodec, PartialEq, Eq)]
+#[cfg_attr(any(test, feature = "arbitrary-impls"), derive(get_size2::GetSize))]
 pub struct TimeLockWitness {
     /// One timestamp for every input UTXO. Inputs that do not have a time lock are
     /// assigned timestamp 0, which is automatically satisfied.
@@ -1012,8 +1013,8 @@ mod tests {
     use super::neptune_arbitrary::arbitrary_primitive_witness_with_expired_timelocks;
     use super::*;
     use crate::protocol::proof_abstractions::tasm::builtins as tasm;
-    use crate::protocol::proof_abstractions::tasm::program::spec::TritonProgramSpecification;
     use crate::protocol::proof_abstractions::tasm::program::tests::test_program_snapshot;
+    use crate::protocol::proof_abstractions::tasm::program::tests::TritonProgramSpecification;
 
     impl TritonProgramSpecification for TimeLock {
         #[expect(clippy::needless_return)]

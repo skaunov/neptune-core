@@ -60,7 +60,7 @@ use crate::application::locks::tokio::LockCallbackFn;
 ///
 /// let mut atomic_tables = AtomicRw::from(tables);
 ///
-/// // these mutations happen atomically in mem.
+/// // These mutations happen atomically in mem.
 /// {
 ///     let mut lock = atomic_tables.lock_guard_mut().await;
 ///     lock.0.push(5).await;
@@ -69,19 +69,17 @@ use crate::application::locks::tokio::LockCallbackFn;
 ///     lock.3.insert(101, "Hello".to_owned()).await;
 /// }
 ///
-/// // all pending writes are persisted to DB in one atomic batch operation.
+/// // All pending writes are persisted to DB in one atomic batch operation.
 /// storage.persist();
 /// # });
 /// ```
 ///
-/// In the example, the `table` were placed in a `tuple` container.
-/// It works equally well to put them in a `struct`.  If the tables
-/// are all of the same type (including generics), they could be
-/// placed in a collection type such as `Vec`, or `HashMap`.
+/// In the example, the `table` were placed in a `tuple` container. It works equally well to put them in a `struct`.  If the tables
+/// are all of the same type (including generics), they could be placed in a collection type such as `Vec`, or `HashMap`.
 #[derive(Debug)]
 pub struct DbtSchema {
     /// Pending writes for all tables in this Schema.
-    /// These get written/cleared by StorageWriter::persist()
+    /// these get written/cleared by `StorageWriter::persist()`
     ///
     /// todo: Can we get rid of this lock?
     pub(super) pending_writes: AtomicRw<PendingWrites>,

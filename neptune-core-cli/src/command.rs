@@ -18,10 +18,10 @@ pub(crate) mod payment;
 pub(crate) mod statistics;
 pub(crate) mod wallet;
 
-/// The CLI Command
+/// The CLI `Command`.
 ///
-// The enum enumerates subclasses but due to the #[command(flatten)] directive,
-// it is one big list from clap's perspective.
+/// This enumerates subclasses but due to the `#[command(flatten)]` directive,
+/// it is one big list from `clap` perspective.
 #[derive(Debug, Clone, Parser)]
 #[command(version)]
 pub(crate) enum Command {

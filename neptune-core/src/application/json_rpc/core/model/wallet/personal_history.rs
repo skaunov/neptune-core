@@ -3,7 +3,6 @@ use serde::Serialize;
 use tasm_lib::prelude::Digest;
 
 use crate::api::export::Timestamp;
-use crate::application::json_rpc::core::model::block::header::RpcBlockHeight;
 use crate::application::json_rpc::core::model::block::transaction_kernel::RpcAbsoluteIndexSet;
 use crate::application::json_rpc::core::model::block::transaction_kernel::RpcAdditionRecord;
 use crate::application::json_rpc::core::model::common::RpcNativeCurrencyAmount;
@@ -21,7 +20,7 @@ pub struct ReceivedTransactionOutput {
     pub sender_randomness: Digest,
     pub confirmed_timestamp: Timestamp,
     pub confirmed_block: Digest,
-    pub confirmed_height: RpcBlockHeight,
+    pub confirmed_height: crate::api::export::BlockHeight,
     pub receiving_address: Option<String>,
     pub canonical: bool,
 
@@ -88,7 +87,7 @@ impl From<CoinWithPossibleTimeLock> for RpcCoinWithPossibleTimeLock {
             confirmed: value.confirmed,
             release_date: value.release_date,
             aocl_leaf_index: value.aocl_leaf_index,
-            lock_script_hash: value.lock_script_hash,
+            lock_script_hash: value.lock_script_hash.0,
             num_confirmations: value.num_confirmations,
         }
     }

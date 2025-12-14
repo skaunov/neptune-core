@@ -1,9 +1,6 @@
 use std::collections::HashSet;
 
 use itertools::Itertools;
-use rand::distr::Distribution;
-use rand::distr::StandardUniform;
-use rand::Rng;
 use tasm_lib::triton_vm::prelude::BFieldCodec;
 
 use crate::api::export::Announcement;
@@ -85,8 +82,9 @@ impl TransparentTransactionInfo {
     }
 }
 
-impl Distribution<TransparentTransactionInfo> for StandardUniform {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> TransparentTransactionInfo {
+#[cfg(any(test, feature = "arbitrary-impls"))]
+impl rand::distr::Distribution<TransparentTransactionInfo> for rand::distr::StandardUniform {
+    fn sample<R: rand::Rng + ?Sized>(&self, rng: &mut R) -> TransparentTransactionInfo {
         let num_inputs = rng.random_range(0..10);
         let num_outputs = rng.random_range(0..10);
         let inputs = (0..num_inputs).map(|_| rng.random()).collect_vec();

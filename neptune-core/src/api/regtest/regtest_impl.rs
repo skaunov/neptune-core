@@ -7,6 +7,7 @@ use crate::protocol::consensus::block::mock_block_generator::MockBlockGenerator;
 use crate::protocol::consensus::block::Block;
 use crate::protocol::shared::SIZE_20MB_IN_BYTES;
 use crate::state::mining::block_proposal::BlockProposal;
+use crate::state::wallet::address::pokolen_address::PokolenReceivingAddress;
 use crate::state::wallet::expected_utxo::ExpectedUtxo;
 use crate::GlobalStateLock;
 use crate::RPCServerToMain;
@@ -25,15 +26,12 @@ impl From<GlobalStateLock> for RegTest {
     }
 }
 
-// these methods just call a worker method, so the public API
+// These methods just call a worker method, so the public API
 // is easy to read and digest.  Please keep it that way.
 //
-// future methods are planned. see:
+// Future methods are planned. see https://github.com/Neptune-Crypto/neptune-core/issues/539
 //
-// https://github.com/Neptune-Crypto/neptune-core/issues/539
-//
-// they will provide functionality similar to bitcoin-core, eg:
-//
+// they will provide functionality similar to bitcoin-core, eg \\
 // generatetoaddress: This RPC creates a specified number of blocks and sends the block rewards to a provided address, enabling rapid chain advancement for testing.
 // generate: This RPC mines a specified number of blocks, but offers less control over the recipient address compared to generatetoaddress.
 // generateblock: This RPC mines a block and allows the caller to specify the block template.
@@ -42,7 +40,7 @@ impl From<GlobalStateLock> for RegTest {
 // reconsiderblock: This RPC reconsiders whether a block should be part of the best chain, often used in conjunction with invalidateblock to test chain selection logic.
 //
 impl RegTest {
-    /// mine a series of blocks to the node's wallet. (regtest network only)
+    /// mine a series of blocks to the node's wallet (regtest network only)
     ///
     /// These blocks can be generated quickly because they do not have
     /// a real ZK proof.  they have a mock "proof" that is simply trusted
@@ -56,10 +54,8 @@ impl RegTest {
         &mut self,
         n_blocks: u32,
         mine_mempool_txs: bool,
-    ) -> Result<(), RegTestError> {
-        self.worker
-            .mine_blocks_to_wallet(n_blocks, mine_mempool_txs)
-            .await
+    ) -> Result<Vec<PokolenReceivingAddress>, RegTestError> {
+        self.worker.mine_blocks_to_wallet(n_blocks, mine_mempool_txs).await
     }
 
     /// mine a single block to the node's wallet with a custom timestamp
@@ -76,28 +72,26 @@ impl RegTest {
         &mut self,
         timestamp: Timestamp,
         mine_mempool_sp_txs: bool,
-    ) -> Result<Digest, RegTestError> {
-        self.worker
-            .mine_block_to_wallet(timestamp, rand::random(), mine_mempool_sp_txs)
-            .await
+    ) -> Result<(Digest, PokolenReceivingAddress), RegTestError> {
+        self.worker.mine_block_to_wallet(
+            timestamp, rand::random(), mine_mempool_sp_txs
+        ).await
     }
 
     /// Compose a block with a mocked proof and set it as current block
-    /// proposal
+    /// proposal.
     pub async fn set_self_composed_proposal(&mut self, timestamp: Timestamp, seed: [u8; 32]) {
         self.worker
             .set_self_composed_proposal(timestamp, seed)
             .await
     }
 
-    /// Freeze state to prevent blocks and transactions from being shared with
-    /// peers.
+    /// Freeze state to prevent blocks and transactions from being shared with peers.
     pub async fn freeze(&mut self) {
         self.worker.freeze().await;
     }
 
-    /// Unfreeze state to allow blocks and transactions to be shared after a
-    /// freeze.
+    /// Unfreeze state to allow blocks and transactions to be shared after a freeze.
     pub async fn unfreeze(&mut self) {
         self.worker.unfreeze().await;
     }
@@ -116,15 +110,12 @@ impl RegTestPrivate {
     async fn set_self_composed_proposal(&mut self, timestamp: Timestamp, seed: [u8; 32]) {
         let include_mempool_txs = true;
         let find_valid_pow = false;
-        let (block_proposal, composer_utxos) = self
-            .compose(timestamp, seed, include_mempool_txs, find_valid_pow)
-            .await;
+        let (block_proposal, composer_utxos, _) = self.compose(timestamp, seed, include_mempool_txs, find_valid_pow).await;
 
         self.global_state_lock
-            .lock_guard_mut()
-            .await
-            .mining_state
-            .block_proposal = BlockProposal::OwnComposition((block_proposal, composer_utxos));
+        .lock_guard_mut().await
+        .mining_state
+        .block_proposal = BlockProposal::OwnComposition((block_proposal, composer_utxos));
     }
 
     async fn compose(
@@ -133,7 +124,7 @@ impl RegTestPrivate {
         seed: [u8; 32],
         include_mempool_txs: bool,
         find_valid_pow: bool,
-    ) -> (Block, Vec<ExpectedUtxo>) {
+    ) -> (Block, Vec<ExpectedUtxo>, PokolenReceivingAddress) {
         let gsl = &self.global_state_lock;
 
         assert!(
@@ -147,7 +138,7 @@ impl RegTestPrivate {
         let next_block_height = tip.header().height.next();
         let composer_parameters = gs.composer_parameters(next_block_height);
 
-        // retrieve selected tx from mempool for block inclusion.
+        // retrieve selected tx from mempool for block inclusion
         let txs_from_mempool = if include_mempool_txs {
             gs.mempool.get_transactions_for_block_composition(
                 SIZE_20MB_IN_BYTES,
@@ -185,6 +176,7 @@ impl RegTestPrivate {
         (
             block,
             composer_parameters.extract_expected_utxos(composer_tx_outputs),
+            adr_guesser
         )
     }
 
@@ -193,12 +185,12 @@ impl RegTestPrivate {
         &mut self,
         n_blocks: u32,
         mine_mempool_sp_txs: bool,
-    ) -> Result<(), RegTestError> {
-        for _ in 0..n_blocks {
-            self.mine_block_to_wallet(Timestamp::now(), rand::random(), mine_mempool_sp_txs)
-                .await?;
-        }
-        Ok(())
+    ) -> Result<Vec<PokolenReceivingAddress>, RegTestError> {
+        let mut r = Vec::with_capacity(n_blocks as usize);
+        for _ in 0..n_blocks {r.push(self.mine_block_to_wallet(
+            Timestamp::now(), rand::random(), mine_mempool_sp_txs
+        ).await?.1)}
+        Ok(r)
     }
 
     // see description in [RegTest]
@@ -207,33 +199,32 @@ impl RegTestPrivate {
         timestamp: Timestamp,
         seed: [u8; 32],
         include_mempool_txs: bool,
-    ) -> Result<Digest, RegTestError> {
-        let find_valid_pow = true;
-        let (block, expected_utxos) = self
-            .compose(timestamp, seed, include_mempool_txs, find_valid_pow)
-            .await;
+    ) -> Result<(Digest, PokolenReceivingAddress), RegTestError> {
+        let (block, expected_utxos, adr_guesser) = 
+            self.compose(timestamp, seed, include_mempool_txs, true).await;
 
         self.global_state_lock
-            .lock_guard_mut()
-            .await
-            .wallet_state
-            .add_expected_utxos(expected_utxos)
-            .await;
+        .lock_guard_mut().await
+        .wallet_state
+        .add_expected_utxos(expected_utxos).await;
 
         let block_hash = block.hash();
         info!("Mined RegTest block of height {}", block.header().height);
 
-        // inform main-loop.  to add to mempool and broadcast.
+        // Inform main-loop.  To add to mempool and broadcast.
         //
-        // todo: ideally we would pass a listener here to wait on, so that
+        // Todo: ideally we would pass a listener here to wait on, so that
         // once the block is added we get notified, rather than polling.
-        self.global_state_lock.rpc_server_to_main_tx()
-            .send(RPCServerToMain::ProofOfWorkSolution(Box::new(block)))
-            .await
-            .map_err(|_| {
-                tracing::warn!("channel send failed. channel 'rpc_server_to_main' closed unexpectedly. main_loop may have terminated prematurely.");
-                RegTestError::Failed("internal error. block not added to blockchain".into())
-            })?;
+        match self.global_state_lock.rpc_server_to_main_tx()
+        .send(RPCServerToMain::ProofOfWorkSolution(Box::new(block))).await {
+            Ok(_) => {
+                // wait until the main-loop has actually added the block to the canonical chain
+                // or 5 second timeout happens.
+                //
+                // otherwise, wallet balance might not (yet) see coinbase funds, etc.
+                //
+                // note: temporary until listener approach is implemented
+                Self::wait_until_block_in_chain(&self.global_state_lock, block_hash).await?;
 
         // wait until the main-loop has actually added the block to the canonical chain
         // a timeout happens.
@@ -256,9 +247,9 @@ impl RegTestPrivate {
         state.net.freeze = false;
     }
 
-    // waits (polls) until block is found in canonical chain or 5 second timeout occurs.
+    // waits (polls) until block is found in canonical chain or 5 second timeout occurs
     //
-    // note: temporary until listener approach is implemented.
+    // note: temporary until listener approach is implemented
     async fn wait_until_block_in_chain(
         gsl: &GlobalStateLock,
         block_hash: Digest,

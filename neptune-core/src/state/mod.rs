@@ -134,8 +134,8 @@ use crate::VERSION;
 ///  1. Enables write serialization over all application state.
 ///     (blockchain, mempool, wallet, global flags)
 ///  2. Readers see a consistent view of data.
-///  3. makes it easy to reason about locking.
-///  4. simplifies the codebase.
+///  3. makes it easy to reason about locking
+///  4. simplifies the codebase
 ///
 /// The primary drawback is that long write operations can
 /// block readers.  As such, every effort should be made to keep
@@ -146,13 +146,11 @@ use crate::VERSION;
 /// Readers do not block eachother.  Only a writer blocks readers.
 /// See [`RwLock`](std::sync::RwLock) docs for details.
 ///
-/// ** unless some type uses interior mutability.  We have made
+/// ** Unless some type uses interior mutability.  We have made
 /// efforts to eradicate interior mutability in this crate.
 ///
-/// Usage conventions:
-///
+/// Usage conventions.
 /// ```text
-///
 /// // property naming:
 /// struct Foo {
 ///     global_state_lock: GlobalStateLock
@@ -451,10 +449,10 @@ impl GlobalStateLock {
         tx_artifacts: &TxCreationArtifacts,
     ) -> std::result::Result<(), RecordTransactionError> {
         //
-        // verifies that:
-        //  1. Self::network matches provided Network.
-        //  2. Transaction and TransactionDetails match.
-        //  3. Transaction proof is valid, and thus the Tx itself is valid.
+        // verifies 
+        //  1. `Self::network` matches provided `Network`.
+        //  2. Transaction and `TransactionDetails` match.
+        //  3. Transaction proof is valid, and thus the tx itself is valid.
 
         // acquire write-lock
         let mut gsm = self.lock_guard_mut().await;
@@ -539,26 +537,25 @@ pub enum RecordTransactionError {
     FailedToRecordOutgoingRandomness(String),
 }
 
-/// abstracts over lock acquisition types for [GlobalStateLock]
+/// abstracts over lock acquisition types for [`GlobalStateLock`]
 ///
-/// this enables methods to be written that can accept whatever
+/// This enables methods to be written that can accept whatever
 /// the caller has.
 ///
-/// such generic methods can be called in series to share an already
+/// Such generic methods can be called in series to share an already
 /// acquired lock-guard, or to each acquire its own lock-guard
 /// in the case of `Lock` variant.
 ///
-/// Example usage:
-///
+/// Example usage.
 /// ```rust
 /// use neptune_cash::state::GlobalState;
 /// use neptune_cash::state::GlobalStateLock;
 /// use neptune_cash::api::export::StateLock;
 /// fn worker(gs: &GlobalState, truth: bool) {
-///    // do something with gs and truth.
+///    // Do something with `gs` and `truth`.
 /// }
 ///
-/// // a callee that accepts &StateLock
+/// // a callee that accepts `&StateLock`
 /// async fn callee(state_lock: &StateLock<'_>, truth: bool) {
 ///     match state_lock {
 ///        StateLock::Lock(gsl) => worker(&*gsl.lock_guard().await, truth),
@@ -590,14 +587,14 @@ pub enum RecordTransactionError {
 ///     callee(&sl, false).await;
 /// }
 ///
-/// // a caller that uses `ReadLock` variant and calls fn that accept `&GlobalState`
+/// // a caller that uses `ReadLock` variant and calls `fn` that accept `&GlobalState`
 /// async fn caller_4(gsl: GlobalStateLock) {
-///     // read-lock is acquired only once.
+///     // Read-lock is acquired only once.
 ///     let sl = StateLock::from(gsl.lock_guard().await);
 ///     callee(&sl, true).await;
 ///     callee(&sl, false).await;
 ///
-///     // we can pass &GlobalState directly.
+///     // We can pass `&GlobalState` directly.
 ///     worker(sl.gs(), true);
 ///
 ///     // convert back into a read-guard
@@ -611,7 +608,7 @@ pub enum RecordTransactionError {
 /// advanced usage as caller: see source of [TransactionSender::send()](crate::api::tx_initiation::send::TransactionSender::send())
 #[derive(Debug)]
 pub enum StateLock<'a> {
-    /// holds an instance GlobalStateLock. can be used to
+    /// Holds an instance `GlobalStateLock`. can be used to
     Lock(Box<GlobalStateLock>),
     ReadGuard(AtomicRwReadGuard<'a, GlobalState>),
     WriteGuard(AtomicRwWriteGuard<'a, GlobalState>),
@@ -929,7 +926,7 @@ impl GlobalState {
     }
 
     /// Return the [`ConsensusRuleSet`] that applies for current tip.
-    pub fn consensus_rule_set(&self) -> ConsensusRuleSet {
+    pub(crate) fn consensus_rule_set(&self) -> ConsensusRuleSet {
         let tip_height = self.chain.tip_height();
         ConsensusRuleSet::infer_from(self.cli().network, tip_height)
     }
@@ -1836,11 +1833,13 @@ impl GlobalState {
             .copied()
             .collect();
 
-        let lock_script_hash_to_spending_key: HashMap<Digest, SpendingKey> = self
-            .wallet_state
-            .get_all_known_spending_keys()
-            .map(|x| (x.lock_script_hash(), x))
-            .collect();
+        let lock_script_hash_to_spending_key: HashMap<
+            crate::protocol::consensus::transaction::lock_script::DigestLockScript, SpendingKey
+        > = self
+        .wallet_state
+        .get_all_known_spending_keys()
+        .map(|x| (x.lock_script_hash(), x))
+        .collect();
 
         // Double-check spendability of inputs.
         for synced_utxo in &inputs {
@@ -2375,9 +2374,8 @@ impl GlobalState {
     /// missing membership proofs must match the order of the `new_utxos` input.
     ///
     /// # Panics
-    ///
-    ///  - If the archival mutator set is not synced to the current state tip.
-    ///  - If recovery data is provided but out-of-order to the monitored UTXOs
+    ///  - if the archival mutator set is not synced to the current state tip;
+    ///  - if recovery data is provided but out-of-order to the monitored UTXOs
     ///    that don't have any membership proofs.
     pub async fn restore_monitored_utxos_from_archival_mutator_set(&mut self) {
         let tip_hash = self.chain.tip_hash();
@@ -2416,7 +2414,7 @@ impl GlobalState {
                 .await;
 
             if monitored_utxo.is_synced_to(tip_hash) {
-                trace!("Not restoring because UTXO is marked as synced");
+                trace!("not restoring because UTXO is marked as synced");
                 continue;
             }
 
@@ -2944,7 +2942,7 @@ impl GlobalState {
         debug!("Applying block to mempool.");
         let (mut mempool_events, mut update_jobs) = self.mempool.update_with_block(tip)?;
 
-        // Do not attempt to maintain the mempool across a fork
+        // Do not attempt to maintain the mempool across a fork.
         let network = self.cli().network;
         let previous_rules = ConsensusRuleSet::infer_from(network, previous_height);
         let new_rules = ConsensusRuleSet::infer_from(network, tip.header().height);
@@ -2999,11 +2997,37 @@ impl GlobalState {
 
     /// resync membership proofs
     pub async fn resync_membership_proofs(&mut self) -> Result<()> {
-        // Do not fix memberhip proofs if node is in sync mode, as we would otherwise
-        // have to sync many times, instead of just *one* time once we have caught up.
+        /* Do not fix memberhip proofs if node is in sync mode, as we would otherwise
+        have to sync many times, instead of just *one* time once we have caught up. */
         if self.net.sync_anchor.is_some() {
-            debug!("Not syncing MS membership proofs because we are syncing");
-            return Ok(());
+            debug!("not syncing MS membership proofs because we are syncing");
+            Ok(())
+        } else {
+            // is it necessary?
+            let current_tip_digest = self.chain.tip().hash();
+            if self.wallet_state.is_synced_to(
+                current_tip_digest, self.is_true_archival()
+            ).await {
+                debug!("membership proof syncing not needed");
+                Ok(())
+            } else {
+                // do we have an archival mutator set?
+                if self.chain.is_archival_node() {
+                    Ok(self.restore_monitored_utxos_from_archival_mutator_set().await)
+                } else {
+                    // do we have blocks?
+                    /* This code is now dead, because we restore from the archival mutator
+                    set, but we keep it for now since we want to preserve the way of
+                    restoring membership proofs from blocks for a future light client. */
+                    if self.chain.is_archival_node() {
+                        self.resync_membership_proofs_from_stored_blocks(current_tip_digest)
+                            .await
+                    } else {
+                        // request blocks from peers
+                        todo!("We don't yet support non-archival nodes")
+                    }
+                }
+            }
         }
 
         // is it necessary?
@@ -3466,7 +3490,7 @@ mod tests {
     use rand::Rng;
     use rand::SeedableRng;
     use tracing_test::traced_test;
-    use wallet::address::generation_address::GenerationSpendingKey;
+    use wallet::address::pokolen_address::PokolenSpendingKey;
     use wallet::address::KeyType;
     use wallet::expected_utxo::UtxoNotifier;
     use wallet::wallet_entropy::WalletEntropy;
@@ -3484,7 +3508,7 @@ mod tests {
     use crate::protocol::consensus::transaction::transaction_kernel::TransactionKernelModifier;
     use crate::protocol::consensus::transaction::utxo::Utxo;
     use crate::state::transaction::tx_creation_config::TxCreationConfig;
-    use crate::state::wallet::address::generation_address::GenerationReceivingAddress;
+    use crate::state::wallet::address::pokolen_address::PokolenReceivingAddress;
     use crate::state::wallet::transaction_output::TxOutput;
     use crate::state::wallet::utxo_notification::UtxoNotificationMedium;
     use crate::state::wallet::wallet_status::WalletStatusExportFormat;
@@ -3661,7 +3685,7 @@ mod tests {
             first_for_0_1: &Block,
             first_for_2: &Block,
             num_blocks_per_branch: usize,
-            coinbase_recipient: &GenerationSpendingKey,
+            coinbase_recipient: &PokolenSpendingKey,
         ) -> [Vec<Block>; 3] {
             make_branches(
                 network,
@@ -3676,7 +3700,7 @@ mod tests {
             network: Network,
             first_block: &Block,
             branch_length: usize,
-            coinbase_recipient: &GenerationSpendingKey,
+            coinbase_recipient: &PokolenSpendingKey,
             seed: [u8; 32],
         ) -> Vec<Block> {
             let mut rng = StdRng::from_seed(seed);
@@ -3827,7 +3851,7 @@ mod tests {
             network: Network,
             first_blocks: [&Block; N],
             branch_lengths: [usize; N],
-            coinbase_recipient: &GenerationSpendingKey,
+            coinbase_recipient: &PokolenSpendingKey,
         ) -> [Vec<Block>; N] {
             let mut rng = rand::rng();
             let all_branches = Arc::new(tokio::sync::Mutex::new([const { None }; N]));
@@ -4049,9 +4073,9 @@ mod tests {
         let alice_key = alice_gsl
             .wallet_state
             .wallet_entropy
-            .nth_generation_spending_key(0);
+            .nth_forthegeneration_spending_key(0);
         let bob_secret = WalletEntropy::new_random();
-        let bob_key = bob_secret.nth_generation_spending_key(0);
+        let bob_key = bob_secret.nth_forthegeneration_spending_key(0);
 
         // alice mines 3 blocks
         let genesis = Block::genesis(network);
@@ -4101,8 +4125,8 @@ mod tests {
             "wallet balance: {alice_balance_2}\nexpected: {expected_balance_2}",
         );
 
-        // initiate transaction to rando, sending 10 NPT.
-        let rando = GenerationReceivingAddress::derive_from_seed(rng.random());
+        // initiate transaction to rando, sending 10 NPT
+        let rando = PokolenReceivingAddress::derive_from_seed(rng.random());
         drop(alice_gsl); // drop lock to free up api
         let tx_a = send_coins(
             &mut alice,
@@ -4438,19 +4462,19 @@ mod tests {
                     .lock_guard_mut()
                     .await
                     .wallet_state
-                    .nth_spending_key(KeyType::Generation, 102);
+                    .nth_spending_key(KeyType::Pokolen, 102);
                 let sym_key = alice
                     .lock_guard_mut()
                     .await
                     .wallet_state
                     .nth_spending_key(KeyType::Symmetric, 103);
                 let third_party_address =
-                    GenerationReceivingAddress::derive_from_seed(Digest::default());
+                    PokolenReceivingAddress::derive_from_seed(Digest::default());
                 alice
                     .lock_guard_mut()
                     .await
                     .wallet_state
-                    .bump_derivation_index(KeyType::Generation, 104)
+                    .bump_derivation_index(KeyType::Pokolen, 104)
                     .await;
                 alice
                     .lock_guard_mut()
@@ -4642,12 +4666,12 @@ mod tests {
                     .lock_guard_mut()
                     .await
                     .wallet_state
-                    .nth_spending_key(KeyType::Generation, 102);
+                    .nth_spending_key(KeyType::Pokolen, 102);
                 let own_genkey_b = alice
                     .lock_guard_mut()
                     .await
                     .wallet_state
-                    .nth_spending_key(KeyType::Generation, 232);
+                    .nth_spending_key(KeyType::Pokolen, 232);
                 let own_symkey = alice
                     .lock_guard_mut()
                     .await
@@ -4658,7 +4682,7 @@ mod tests {
                     .lock_guard_mut()
                     .await
                     .wallet_state
-                    .bump_derivation_index(KeyType::Generation, 233)
+                    .bump_derivation_index(KeyType::Pokolen, 233)
                     .await;
                 alice
                     .lock_guard_mut()
@@ -4715,7 +4739,7 @@ mod tests {
                 // Balance is still 20. Now send 15 coins to someone else, over
                 // multiple blocks.
                 let third_party_address =
-                    GenerationReceivingAddress::derive_from_seed(Digest::default());
+                    PokolenReceivingAddress::derive_from_seed(Digest::default());
                 for i in 1..=5 {
                     let output = vec![(third_party_address.into(), NativeCurrencyAmount::coins(i))];
                     let block = block_with_outputs(&mut alice, output).await;
@@ -5081,7 +5105,7 @@ mod tests {
                 assert!(!alice.get_balance_history().await.is_empty());
 
                 let bob_wallet_secret = WalletEntropy::new_random();
-                let bob_key = bob_wallet_secret.nth_generation_spending_key(0);
+                let bob_key = bob_wallet_secret.nth_forthegeneration_spending_key(0);
 
                 // 1. Create new block 1 and store it, but do not update wallet
                 // with the new block.
@@ -5159,7 +5183,7 @@ mod tests {
                 let alice_key = alice
                     .wallet_state
                     .wallet_entropy
-                    .nth_generation_spending_key(0);
+                    .nth_forthegeneration_spending_key(0);
 
                 // 1. Create new block 1a where we receive a coinbase UTXO, store it
                 let genesis_block = alice.chain.archival_state().get_tip().await;
@@ -5186,7 +5210,7 @@ mod tests {
                 // Make a new fork from genesis that makes us lose the composer UTXOs
                 // of block 1a.
                 let bob_wallet_secret = WalletEntropy::new_random();
-                let bob_key = bob_wallet_secret.nth_generation_spending_key(0);
+                let bob_key = bob_wallet_secret.nth_forthegeneration_spending_key(0);
                 let mut parent_block = genesis_block;
                 for _ in 0..5 {
                     let (next_block, _) =
@@ -5258,9 +5282,9 @@ mod tests {
                 let alice_key = alice
                     .wallet_state
                     .wallet_entropy
-                    .nth_generation_spending_key(0);
+                    .nth_forthegeneration_spending_key(0);
                 let bob_secret = WalletEntropy::new_random();
-                let bob_key = bob_secret.nth_generation_spending_key(0);
+                let bob_key = bob_secret.nth_forthegeneration_spending_key(0);
 
                 // 1. Create new block 1 where Alice receives two composer UTXOs, store it.
                 let genesis_block = alice.chain.archival_state().get_tip().await;
@@ -5328,7 +5352,7 @@ mod tests {
                         .join(", ")
                 );
 
-                // Add blocks on top of 1, *not* mined by Alice
+                // Add 60 blocks on top of 1, *not* mined by Alice
                 for branch_block in a_blocks {
                     alice.set_new_tip(branch_block).await.unwrap();
                 }
@@ -5536,7 +5560,7 @@ mod tests {
             .lock_guard_mut()
             .await
             .wallet_state
-            .next_unused_spending_key(KeyType::Generation)
+            .next_unused_spending_key(KeyType::Pokolen)
             .await;
         let config_alice_and_bob = TxCreationConfig::default()
             .recover_change_off_chain(genesis_key.clone())
@@ -6159,7 +6183,7 @@ mod tests {
             let mut rng = rand::rng();
             let genesis_block = Block::genesis(network);
             let wallet_secret = WalletEntropy::devnet_wallet();
-            let spending_key = wallet_secret.nth_generation_spending_key(0);
+            let spending_key = wallet_secret.nth_forthegeneration_spending_key(0);
 
             let mut global_state_lock = mock_genesis_global_state(
                 2,
@@ -6250,7 +6274,7 @@ mod tests {
             let mut alice = alice.global_state_lock.lock_guard_mut().await;
             assert_eq!(genesis_block.hash(), alice.chain.tip().hash());
 
-            let cb_key = WalletEntropy::new_random().nth_generation_spending_key(0);
+            let cb_key = WalletEntropy::new_random().nth_forthegeneration_spending_key(0);
             let (block_1, _) =
                 make_mock_block(&genesis_block, None, cb_key, rng.random(), network).await;
 
@@ -6276,7 +6300,7 @@ mod tests {
             length: usize,
         ) -> Vec<(Block, Block)> {
             let mut rng = rand::rng();
-            let cb_key = WalletEntropy::new_random().nth_generation_spending_key(0);
+            let cb_key = WalletEntropy::new_random().nth_forthegeneration_spending_key(0);
             let mut parent = Block::genesis(network);
             let mut chain = vec![];
             for _ in 0..length {
@@ -6412,7 +6436,7 @@ mod tests {
             let mut rng = rand::rng();
             let genesis_block = Block::genesis(network);
             let wallet_secret = WalletEntropy::devnet_wallet();
-            let spending_key = wallet_secret.nth_generation_spending_key(0);
+            let spending_key = wallet_secret.nth_forthegeneration_spending_key(0);
 
             let (block_1a, composer_expected_utxos_1a) =
                 make_mock_block(&genesis_block, None, spending_key, rng.random(), network).await;
@@ -6528,7 +6552,7 @@ mod tests {
             let network = Network::Main;
             let wallet_secret = WalletEntropy::devnet_wallet();
             let genesis_block = Block::genesis(network);
-            let spend_key = wallet_secret.nth_generation_spending_key(0);
+            let spend_key = wallet_secret.nth_forthegeneration_spending_key(0);
 
             let (block_1, composer_expected_utxos_1) =
                 make_mock_block(&genesis_block, None, spend_key, rng.random(), network).await;
@@ -6558,14 +6582,12 @@ mod tests {
                     global_state.set_new_tip(block_1.clone()).await.unwrap();
                 }
 
-                // One more time
+                // One more time.
                 global_state.set_new_tip(block_1.clone()).await.unwrap();
 
                 let expected_num_mutxos = if claim_coinbase { 3 } else { 1 };
                 assert_correct_global_state(
                     &global_state,
-                    block_1.clone(),
-                    Some(genesis_block.clone()),
                     1,
                     expected_num_mutxos,
                 )
@@ -6711,7 +6733,7 @@ mod tests {
         #[traced_test]
         #[apply(shared_tokio_runtime)]
         async fn onchain_generation_change_exists() {
-            change_exists(UtxoNotificationMedium::OnChain, KeyType::Generation).await
+            change_exists(UtxoNotificationMedium::OnChain, KeyType::Pokolen).await
         }
 
         /// test scenario: offchain/symmetric.
@@ -6731,7 +6753,7 @@ mod tests {
         #[traced_test]
         #[apply(shared_tokio_runtime)]
         async fn offchain_generation_change_exists() {
-            change_exists(UtxoNotificationMedium::OffChain, KeyType::Generation).await
+            change_exists(UtxoNotificationMedium::OffChain, KeyType::Pokolen).await
         }
 
         /// basic scenario:  alice receives 20 coins in the premine.  7 months
@@ -6820,7 +6842,7 @@ mod tests {
                     .lock_guard_mut()
                     .await
                     .wallet_state
-                    .next_unused_spending_key(KeyType::Generation)
+                    .next_unused_spending_key(KeyType::Pokolen)
                     .await
                     .to_address()
             };
@@ -7010,7 +7032,7 @@ mod tests {
                 // for a real restore, we should generate perhaps 1000 of each.
                 let _ = alice_state_mut
                     .wallet_state
-                    .next_unused_spending_key(KeyType::Generation)
+                    .next_unused_spending_key(KeyType::Pokolen)
                     .await;
                 let _ = alice_state_mut
                     .wallet_state

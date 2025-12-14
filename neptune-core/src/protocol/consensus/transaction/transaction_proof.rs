@@ -56,21 +56,19 @@ impl TransactionProofType {
 pub enum TransactionProof {
     /// a primitive-witness.  exposes secrets (keys).  this proof must not be shared.
     Witness(PrimitiveWitness),
-    /// a strong proof.  required for confirming a transaction into a block.
-    SingleProof(NeptuneProof),
     /// a weak proof that does not expose secrets. can be shared with peers, but cannot be confirmed into a block.
     ProofCollection(ProofCollection),
+    /// a strong proof.  required for confirming a transaction into a block.
+    SingleProof(NeptuneProof),
 }
 
 impl TransactionProof {
     pub fn is_witness(&self) -> bool {
         matches!(self, Self::Witness(_))
     }
-
     pub fn is_proof_collection(&self) -> bool {
         matches!(self, Self::ProofCollection(_))
     }
-
     pub fn is_single_proof(&self) -> bool {
         matches!(self, Self::SingleProof(_))
     }
@@ -78,22 +76,18 @@ impl TransactionProof {
     /// Convert a transaction proof into a Triton VM proof.
     ///
     /// # Panics
-    ///
     /// - If the proof type is any other than [TransactionProof::SingleProof].
     pub(crate) fn into_single_proof(self) -> NeptuneProof {
         match self {
-            TransactionProof::SingleProof(proof) => proof,
-            TransactionProof::Witness(_) => {
-                panic!("Expected SingleProof, got Witness")
-            }
+            TransactionProof::Witness(_) => panic!("Expected SingleProof, got Witness"),
             TransactionProof::ProofCollection(_) => {
                 panic!("Expected SingleProof, got ProofCollection")
             }
+            TransactionProof::SingleProof(proof) => proof,
         }
     }
 
-    /// Convert a transaction proof into a Triton VM proof, if the transaction
-    /// is single proof backed. Otherwise returns `None`.
+    /// Convert a transaction proof into a Triton VM proof, if the transaction is single proof backed. Otherwise returns `None`.
     pub(crate) fn as_single_proof(&self) -> Option<NeptuneProof> {
         match self {
             TransactionProof::Witness(_) => None,
@@ -105,16 +99,15 @@ impl TransactionProof {
     /// Convert a transaction proof into a primitive witness
     ///
     /// # Panics
-    ///
     /// - If the proof type is any other than [TransactionProof::Witness].
     pub(crate) fn into_primitive_witness(self) -> PrimitiveWitness {
         match self {
             TransactionProof::Witness(primitive_witness) => primitive_witness,
-            TransactionProof::SingleProof(_) => {
-                panic!("Expected primitive witness, got SingleProof")
-            }
             TransactionProof::ProofCollection(_) => {
                 panic!("Expected primitive witness, got ProofCollection")
+            }
+            TransactionProof::SingleProof(_) => {
+                panic!("Expected primitive witness, got SingleProof")
             }
         }
     }
@@ -129,18 +122,7 @@ impl TransactionProof {
         }
     }
 
-    pub(crate) fn proof_type(&self) -> TransactionProofType {
-        match self {
-            TransactionProof::Witness(_) => TransactionProofType::PrimitiveWitness,
-            TransactionProof::ProofCollection(_) => TransactionProofType::ProofCollection,
-            TransactionProof::SingleProof(_) => TransactionProofType::SingleProof,
-        }
-    }
-
-    /// verify this proof is valid for a provided transaction id.
-    ///
-    /// Block height is the height of the block that matches the transaction's
-    /// mutator set accumulator.
+    /// verify this proof is valid for a provided transaction id
     pub async fn verify(
         &self,
         kernel_mast_hash: Digest,
@@ -149,12 +131,16 @@ impl TransactionProof {
     ) -> bool {
         match self {
             TransactionProof::Witness(primitive_witness) => {
-                primitive_witness.validate().await.is_ok()
-                    && primitive_witness.kernel.mast_hash() == kernel_mast_hash
+                primitive_witness.kernel.mast_hash() == kernel_mast_hash
+                    && primitive_witness.validate().await.is_ok()
             }
             TransactionProof::SingleProof(single_proof) => {
-                let claim = single_proof_claim(kernel_mast_hash, consensus_rule_set);
-                verify(claim, single_proof.clone(), network).await
+                verify(
+                    single_proof_claim(kernel_mast_hash, consensus_rule_set),
+                    single_proof.clone(),
+                    network,
+                )
+                .await
             }
             TransactionProof::ProofCollection(proof_collection) => {
                 proof_collection.verify(kernel_mast_hash, network).await

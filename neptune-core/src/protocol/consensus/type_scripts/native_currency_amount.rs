@@ -36,7 +36,7 @@ use crate::triton_vm::prelude::triton_instr;
 ///
 /// 1 Neptune coin = 10^30 * 2^2 nau.
 ///
-/// This conversion factor was chosen such that:
+/// This conversion factor was chosen such that.
 ///  - The largest possible amount, corresponding to 42 000 000 Neptune coins, takes 127 bits.
 ///    The top bit is the sign bit and is used for negative amounts (in two's complement).
 ///  - When expanding amounts of Neptune coins in decimal form, we can represent them exactly
@@ -83,7 +83,7 @@ impl NativeCurrencyAmount {
         Self(-Self::MAX_NAU)
     }
 
-    pub const fn coin_as_nau() -> i128 {
+    pub(crate) const fn coin_as_nau() -> i128 {
         Self::conversion_factor()
     }
 
@@ -114,11 +114,11 @@ impl NativeCurrencyAmount {
         NativeCurrencyAmount(1i128)
     }
 
-    /// Create an NativeCurrencyAmount object of the given number of whole coins.
+    /// Create an `NativeCurrencyAmount` object of the given number of whole coins.
     ///
     /// Note that the maximum number of whole coins is 42 million which fits
-    /// within a u32.
-    pub const fn coins(num_whole_coins: u32) -> NativeCurrencyAmount {
+    /// within a `u32`.
+    pub const fn coins(num_whole_coins: u32) -> Self {
         assert!(
             num_whole_coins <= 42_000_000,
             "Number of coins must be less than 42000000"
@@ -135,7 +135,7 @@ impl NativeCurrencyAmount {
         Self(self.0 / 2)
     }
 
-    /// Create a `coins` object for use in a UTXO
+    /// create a `coins` object for use in a UTXO
     pub fn to_native_coins(&self) -> Vec<Coin> {
         let dictionary = vec![Coin {
             type_script_hash: NativeCurrency.hash(),

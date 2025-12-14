@@ -1,6 +1,5 @@
 use std::sync::OnceLock;
 
-use get_size2::GetSize;
 use itertools::Itertools;
 use serde::Deserialize;
 use serde::Serialize;
@@ -40,49 +39,47 @@ impl HasDiscriminant for BlockBodyField {
     }
 }
 
-/// Public fields of `BlockBody` are read-only, enforced by #[readonly::make].
+/// Public fields of `BlockBody` are read-only, enforced by `#[readonly::make]`.
 /// Modifications are possible only through `BlockBody` methods.
 ///
-// ## About the private `mast_hash` field:
-//
-// The `mast_hash` field represents the `BlockBody` MAST hash.  It is an
-// optimization so that the hash can be lazily computed at most once (per
-// modification). Without it, the PoW hash rate depends on the number of inputs
-// and outputs in a transaction. This caching of a hash value is similar to that
-// of `Block`.
-//
-// The field must be reset whenever the block body is modified.  As such, we
-// should not permit direct modification of internal fields.
-//
-// Therefore `[readonly::make]` is used to make public `BlockBody` fields read-
-// only (not mutable) outside of this module.  All methods that modify BlockBody
-// must reset this field.
-//
-// We manually implement `PartialEq` and `Eq` so that digest field will not be
-// compared.  Otherwise, we could have identical blocks except one has
-// initialized digest field and the other has not.
-//
-// The field should not be serialized, so it has the `#[serde(skip)]` attribute.
-// Upon deserialization, the field will have Digest::default() which is desired
-// so that the digest will be recomputed if/when hash() is called.
-//
-// We likewise skip the field for `BFieldCodec`, and `GetSize` because there
-// exist no impls for `OnceLock<_>` so derive fails.
-#[derive(Clone, Debug, Serialize, Deserialize, BFieldCodec, GetSize, TasmObject)]
+/// ## About the private `mast_hash` field.
+///
+/// The `mast_hash` field represents the `BlockBody` MAST hash.  It is an
+/// optimization so that the hash can be lazily computed at most once (per
+/// modification). Without it, the PoW hash rate depends on the number of inputs
+/// and outputs in a transaction. This caching of a hash value is similar to that
+/// of `Block`.
+///
+/// The field must be reset whenever the block body is modified.  As such, we
+/// should not permit direct modification of internal fields.
+///
+/// Therefore `[readonly::make]` is used to make public `BlockBody` fields read-
+/// only (not mutable) outside of this module.  All methods that modify BlockBody
+/// must reset this field.
+///
+/// We manually implement `PartialEq` and `Eq` so that digest field will not be
+/// compared.  Otherwise, we could have identical blocks except one has
+/// initialized digest field and the other has not.
+///
+/// The field should not be serialized, so it has the `#[serde(skip)]` attribute.
+/// Upon deserialization, the field will have Digest::default() which is desired
+/// so that the digest will be recomputed if/when hash() is called.
+///
+/// We likewise skip the field for `BFieldCodec`, and `GetSize` because there
+/// exist no impls for `OnceLock<_>` so derive fails.
+#[derive(Clone, Debug, Serialize, Deserialize, BFieldCodec, TasmObject)]
+#[cfg_attr(any(test, feature = "arbitrary-impls"), derive(get_size2::GetSize))]
 pub struct BlockBody {
     /// Every block contains exactly one transaction, which represents the merger of all
     /// broadcasted transactions that the miner decided to confirm. The inputs
-    /// to this transaction kernel must be packed if the consensus rule dictate
-    /// that.
+    /// to this transaction kernel must be packed if the consensus rule dictate that.
     pub transaction_kernel: TransactionKernel,
 
-    /// The mutator set accumulator represents the UTXO set. It is simultaneously an
-    /// accumulator (=> compact representation and membership proofs) and an anonymity
-    /// construction (=> outputs from one transaction do not look like inputs to another).
+    /// The mutator set accumulator represents the UTXO set. It is simultaneously an accumulator (=> compact representation and membership proofs) 
+    /// and an anonymity construction (=> outputs from one transaction do not look like inputs to another).
     ///
     /// This field represents the state of the MS *after* applying the update
-    /// induced by the transaction, but *before* applying the update induced by
-    /// guesser fees (and perhaps later composer fees).
+    /// induced by the transaction, but *before* applying the update induced by guesser fees (and perhaps later composer fees).
     ///
     /// For the final post-block state, refer to
     /// [`Self::mutator_set_accumulator_after`].
@@ -96,11 +93,9 @@ pub struct BlockBody {
     /// current block.
     pub block_mmr_accumulator: MmrAccumulator,
 
-    // This caching ensures that the hash rate is independent of the size of
-    // the block's transaction.
+    /// This caching ensures that the hash rate is independent of the size of the block's transaction.
     #[serde(skip)]
     #[bfield_codec(ignore)]
-    #[get_size(ignore)]
     #[tasm_object(ignore)]
     merkle_tree: OnceLock<MerkleTree>,
 }
@@ -183,9 +178,7 @@ impl BlockBody {
 
     /// The amount rewarded to the guesser who finds a valid nonce for this
     /// block.
-    pub(crate) fn total_guesser_reward(
-        &self,
-    ) -> Result<NativeCurrencyAmount, BlockValidationError> {
+    pub(crate) fn total_guesser_reward(&self) -> Result<NativeCurrencyAmount, BlockValidationError> {
         let r = self.transaction_kernel.fee;
         if r.is_negative() {
             Err(BlockValidationError::NegativeFee)

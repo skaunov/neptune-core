@@ -28,7 +28,7 @@ use tasm_lib::twenty_first::math::bfield_codec::BFieldCodec;
 
 /// Dedicated struct for timestamps (and durations). Counts the number of
 /// milliseconds elapsed since the Unix epoch (00:00 UTC on 1 Jan 1970) using
-/// a single BFieldElement.
+/// a single `BFieldElement`.
 #[derive(
     Debug,
     Clone,

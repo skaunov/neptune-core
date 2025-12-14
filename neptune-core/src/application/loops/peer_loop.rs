@@ -1852,9 +1852,9 @@ impl PeerLoopHandler {
                 // the one whose favorability is being computed.
                 let state = self.global_state_lock.lock_guard().await;
                 let tip = state.chain.tip();
-
-                let network = self.global_state_lock.cli().network;
-                let proposal_is_valid = new_proposal.is_valid(tip, self.now(), network).await;
+                let proposal_is_valid = new_proposal
+                    .is_valid(tip, self.now(), self.global_state_lock.cli().network)
+                    .await;
                 if !proposal_is_valid {
                     drop(state);
                     self.punish(NegativePeerSanction::InvalidBlockProposal)
@@ -2766,8 +2766,7 @@ mod tests {
         use crate::application::loops::mine_loop::guesser_configuration::GuessingConfiguration;
         use crate::protocol::consensus::block::difficulty_control::Difficulty;
         use crate::protocol::consensus::block::validity::block_primitive_witness::BlockPrimitiveWitness;
-        use crate::protocol::consensus::consensus_rule_set::BLOCK_HEIGHT_HARDFORK_BETA_MAIN_NET;
-        use crate::state::wallet::address::generation_address::GenerationReceivingAddress;
+        use crate::state::wallet::address::pokolen_address::PokolenReceivingAddress;
         use crate::tests::shared::blocks::fake_valid_block_proposal_successor_for_test;
         use crate::tests::shared::blocks::next_block;
         use crate::tests::shared::globalstate::test_setup_custom_genesis_block;
@@ -2917,6 +2916,12 @@ mod tests {
             assert!(block_with_valid_tvmv1_pow.is_valid_mock_pow(difficulty.target()));
             assert!(block_with_valid_tvmv1_pow
                 .pow_verify_for_tests(difficulty.target(), ConsensusRuleSet::TvmProofVersion1));
+
+            let mut block_with_valid_tvmv1_pow = block.clone();
+            block_with_valid_tvmv1_pow.satisfy_pow(difficulty, ConsensusRuleSet::TvmProofVersion1);
+            assert!(block_with_valid_tvmv1_pow.is_valid_mock_pow(difficulty.target()));
+            assert!(block_with_valid_tvmv1_pow
+                .pow_verify(difficulty.target(), ConsensusRuleSet::TvmProofVersion1));
 
             (
                 invalid_pow,
@@ -4345,8 +4350,10 @@ mod tests {
                     guesser_tx_b,
                     GuessingConfiguration {
                         num_guesser_threads: state_lock.cli().guesser_threads,
-                        address: GenerationReceivingAddress::derive_from_seed(Digest::default())
-                            .into(),
+                        address: PokolenReceivingAddress::derive_from_seed(
+                            Digest::default(),
+                        )
+                        .into(),
                         // For deterministic pow-guessing, both RNG and timestamp
                         // must be deterministic.
                         override_rng: Some(rng),

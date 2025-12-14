@@ -1,4 +1,4 @@
-//! provides error types related to wallet actions.
+//! Provides error types related to wallet actions.
 
 use serde::Deserialize;
 use serde::Serialize;
@@ -7,7 +7,7 @@ use serde::Serialize;
 #[derive(Debug, Clone, thiserror::Error, Serialize, Deserialize)]
 #[non_exhaustive]
 pub enum WalletError {
-    // catch-all error, eg for anyhow errors
+    /// catch-all error, e g for `anyhow` errors
     #[error("operation failed.  reason: {0}")]
     Failed(String),
 }

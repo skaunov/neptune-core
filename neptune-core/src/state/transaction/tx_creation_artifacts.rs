@@ -13,15 +13,15 @@ use crate::protocol::proof_abstractions::mast_hash::MastHash;
 use crate::state::transaction::transaction_details::TransactionDetails;
 use crate::state::wallet::utxo_notification::PrivateNotificationData;
 
-/// represents a [Transaction] and its corresponding [TransactionDetails]
+/// represents a [`Transaction`] and its corresponding [`TransactionDetails`]
 ///
-/// an instance of this type is necessary to record and broadcast (send) a
-/// transaction with
-/// [record_and_broadcast_transaction()](crate::api::tx_initiation::initiator::TransactionInitiator::record_and_broadcast_transaction()).
+/// an instance of this type is necessary to record and broadcast (send) a transaction with
+/// [`crate::api::tx_initiation::initiator::TransactionInitiator::record_and_broadcast_transaction()`]
 ///
-/// A [Transaction] contains blinded data that can be sent over the network to
-/// other neptune-core nodes.  The [TransactionDetails] contains the unblinded
-/// data that the `Transaction` is generated from, minus the [TransactionProof](crate::protocol::consensus::transaction::transaction_proof::TransactionProof).
+/// A [`Transaction`] contains blinded data that can be sent over the network to
+/// other neptune-core nodes.  The [`TransactionDetails`] contains the unblinded
+/// data that the `Transaction` is generated from, minus 
+/// the [`crate::protocol::consensus::transaction::transaction_proof::TransactionProof`].
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TxCreationArtifacts {
     pub(crate) transaction: Arc<Transaction>,

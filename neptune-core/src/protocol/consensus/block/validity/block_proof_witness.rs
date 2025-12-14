@@ -1,4 +1,3 @@
-use get_size2::GetSize;
 use itertools::Itertools;
 use serde::Deserialize;
 use serde::Serialize;
@@ -31,7 +30,8 @@ use crate::protocol::proof_abstractions::SecretWitness;
 /// All information necessary to efficiently produce a proof for a block.
 ///
 /// This is the witness for the [`BlockProgram`].
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, GetSize, BFieldCodec, TasmObject)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, BFieldCodec, TasmObject)]
+#[cfg_attr(any(test, feature = "arbitrary-impls"), derive(get_size2::GetSize))]
 pub(crate) struct BlockProofWitness {
     pub(super) block_body: BlockBody,
     pub(crate) claims: Vec<Claim>,

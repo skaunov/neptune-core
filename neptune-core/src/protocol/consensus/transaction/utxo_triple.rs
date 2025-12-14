@@ -1,8 +1,3 @@
-use rand::distr::Distribution;
-use rand::distr::StandardUniform;
-use rand::Rng;
-use serde::Deserialize;
-use serde::Serialize;
 use tasm_lib::prelude::Digest;
 use tasm_lib::prelude::Tip5;
 use tasm_lib::triton_vm::prelude::BFieldCodec;
@@ -11,9 +6,8 @@ use crate::protocol::consensus::transaction::utxo::Utxo;
 use crate::util_types::mutator_set::addition_record::AdditionRecord;
 use crate::util_types::mutator_set::commit;
 
-/// Represents the preimage of a transaction output, so not just the UTXO but
-/// also the randomnesses.
-#[derive(Debug, Clone, BFieldCodec, Serialize, Deserialize)]
+/// Represents the preimage of a transaction output, so not just the UTXO but also the randomnesses.
+#[derive(Debug, Clone, BFieldCodec)]
 #[cfg_attr(test, derive(PartialEq, Eq))]
 pub struct UtxoTriple {
     pub utxo: Utxo,
@@ -31,8 +25,9 @@ impl UtxoTriple {
     }
 }
 
-impl Distribution<UtxoTriple> for StandardUniform {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> UtxoTriple {
+#[cfg(any(test, feature = "arbitrary-impls"))]
+impl rand::distr::Distribution<UtxoTriple> for rand::distr::StandardUniform {
+    fn sample<R: rand::Rng + ?Sized>(&self, rng: &mut R) -> UtxoTriple {
         UtxoTriple {
             utxo: rng.random(),
             sender_randomness: rng.random(),

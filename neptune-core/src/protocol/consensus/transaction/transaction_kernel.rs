@@ -29,10 +29,11 @@ pub(crate) const LUSTRATION_FLAG: BFieldElement = BFieldElement::new(51022176260
 /// TransactionKernel is immutable and its hash never changes.
 ///
 /// See [`TransactionKernelModifier`] for generating modified copies.
+/// 
+/// note: see field descriptions in [`TransactionKernelProxy`]
 #[readonly::make]
 #[derive(Debug, Clone, Serialize, Deserialize, GetSize, BFieldCodec, TasmObject)]
 pub struct TransactionKernel {
-    // note: see field descriptions in [`TransactionKernelProxy`]
     pub inputs: Vec<RemovalRecord>,
     pub outputs: Vec<AdditionRecord>,
     pub announcements: Vec<Announcement>,
@@ -44,12 +45,11 @@ pub struct TransactionKernel {
     /// Indicates whether the transaction is the result of some merger.
     pub merge_bit: bool,
 
-    // this is only here as a cache for MastHash
-    // so that we lazily compute the input sequences at most once.
+    /// This is only here as a cache for MastHash
+    /// so that we lazily compute the input sequences at most once.
     #[serde(skip)]
     #[bfield_codec(ignore)]
     #[tasm_object(ignore)]
-    #[get_size(ignore)]
     mast_sequences: OnceLock<Vec<Vec<BFieldElement>>>,
 }
 
@@ -627,16 +627,6 @@ pub mod tests {
                     Self::arbitrary_with_fee(&mut u, fee).ok()
                 })
                 .boxed()
-        }
-
-        fn lowest_aocl_leaf_index(&self) -> Option<u64> {
-            self.inputs
-                .iter()
-                .map(|input| {
-                    let (min_leaf, _) = input.absolute_indices.aocl_range().unwrap();
-                    min_leaf
-                })
-                .min()
         }
     }
 

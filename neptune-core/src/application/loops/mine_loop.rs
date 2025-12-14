@@ -482,9 +482,8 @@ pub(crate) async fn make_coinbase_transaction_stateless(
 /// Compute `TransactionDetails` and a list of `TxOutput`s for a coinbase
 /// transaction.
 ///
-/// # Panics
-///
-///  - If `latest_block` has a negative transaction fee
+/// # Panics...
+/// ...if `latest_block` has a negative transaction fee.
 pub(crate) fn prepare_coinbase_transaction_stateless(
     latest_block: &Block,
     composer_parameters: ComposerParameters,
@@ -531,8 +530,7 @@ pub(crate) enum TxMergeOrigin {
 }
 
 /// Create the transaction that goes into the block template. The transaction is
-/// built from the mempool and from the coinbase transaction. Also returns the
-/// "sender randomness" used in the coinbase transaction.
+/// built from the mempool and from the coinbase transaction. Also returns the "sender randomness" used in the coinbase transaction.
 pub(crate) async fn create_block_transaction(
     predecessor_block: &Block,
     global_state_lock: GlobalStateLock,
@@ -1094,8 +1092,8 @@ pub(crate) mod tests {
     use tracing_test::traced_test;
 
     use super::*;
-    use crate::api::export::GenerationSpendingKey;
     use crate::api::export::ReceivingAddress;
+    use crate::api::export::PokolenSpendingKey;
     use crate::application::config::cli_args;
     use crate::application::config::fee_notification_policy::FeeNotificationPolicy;
     use crate::application::config::network::Network;
@@ -1115,7 +1113,7 @@ pub(crate) mod tests {
     use crate::state::mining::mining_status::MiningStatus;
     use crate::state::transaction::tx_creation_config::TxCreationConfig;
     use crate::state::transaction::tx_proving_capability::TxProvingCapability;
-    use crate::state::wallet::address::generation_address::GenerationReceivingAddress;
+    use crate::state::wallet::address::pokolen_address::PokolenReceivingAddress;
     use crate::state::wallet::address::symmetric_key::SymmetricKey;
     use crate::state::wallet::transaction_output::TxOutput;
     use crate::state::wallet::wallet_entropy::WalletEntropy;
@@ -1796,7 +1794,7 @@ pub(crate) mod tests {
         .unwrap();
 
         let mut rng = StdRng::seed_from_u64(0);
-        let guesser_key = GenerationSpendingKey::derive_from_seed(rng.random());
+        let guesser_key = PokolenSpendingKey::derive_from_seed(rng.random());
 
         let transaction = BlockTransaction::upgrade(transaction);
         let template = Block::block_template_invalid_proof(
@@ -1954,7 +1952,7 @@ pub(crate) mod tests {
                 prev_block.mutator_set_accumulator_after().unwrap().hash(),
             );
 
-            let guesser_key = GenerationSpendingKey::derive_from_seed(rng.random());
+            let guesser_key = PokolenSpendingKey::derive_from_seed(rng.random());
 
             let transaction = BlockTransaction::upgrade(transaction);
             let block = Block::block_template_invalid_proof(
@@ -2188,7 +2186,7 @@ pub(crate) mod tests {
     #[test]
     fn composer_outputs_respect_manually_set_coinbase_distribution() {
         let mut rng = rand::rng();
-        let address = GenerationReceivingAddress::derive_from_seed(rng.random());
+        let address = PokolenReceivingAddress::derive_from_seed(rng.random());
         let coinbase_distribution = vec![
             CoinbaseOutput::timelocked(address.into(), 500),
             CoinbaseOutput::liquid(address.into(), 251),
@@ -2257,9 +2255,8 @@ pub(crate) mod tests {
         }
     }
 
-    /// Return two blocks: Parent and successor. One of them will have the
-    /// defined difficulty, the other will have a random difficulty. Which one
-    /// has the defined difficulty is determined by the 2nd argument.
+    /// Return two blocks: Parent and successor. One of them will have the defined difficulty, the other will have a random difficulty. 
+    /// Which one has the defined difficulty is determined by the 2nd argument.
     fn mock_blocks_for_difficulty_check(
         difficulty: Difficulty,
         set_parent_difficulty: bool,
@@ -2626,7 +2623,7 @@ pub(crate) mod tests {
             );
 
             // gen guesser key
-            let guesser_key = GenerationSpendingKey::derive_from_seed(rng.random());
+            let guesser_key = PokolenSpendingKey::derive_from_seed(rng.random());
 
             // generate a block template / proposal
             let transaction = BlockTransaction::upgrade(transaction);

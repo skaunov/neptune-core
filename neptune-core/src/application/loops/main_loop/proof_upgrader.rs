@@ -632,8 +632,7 @@ impl UpgradeJob {
         }
     }
 
-    /// Build a single-proof backed gobbler transaction that can be used to
-    /// charge another transaction for upgrading a proof.
+    /// Build a single-proof backed gobbler transaction that can be used to charge another transaction for upgrading a proof.
     #[expect(clippy::too_many_arguments)]
     async fn build_gobbler(
         gobbling_fee: NativeCurrencyAmount,
@@ -976,7 +975,7 @@ mod tests {
     use crate::protocol::consensus::block::Block;
     use crate::state::mempool::upgrade_priority::UpgradePriority;
     use crate::state::transaction::tx_creation_config::TxCreationConfig;
-    use crate::state::wallet::address::generation_address::GenerationReceivingAddress;
+    use crate::state::wallet::address::pokolen_address::PokolenReceivingAddress;
     use crate::state::wallet::transaction_output::TxOutput;
     use crate::tests::shared::blocks::fake_block_successor_with_merged_tx;
     use crate::tests::shared::blocks::invalid_empty_block_with_timestamp;
@@ -995,7 +994,7 @@ mod tests {
         fee: NativeCurrencyAmount,
     ) -> Arc<Transaction> {
         let mut rng: StdRng = SeedableRng::seed_from_u64(seed);
-        let receiving_address = GenerationReceivingAddress::derive_from_seed(rng.random());
+        let receiving_address = PokolenReceivingAddress::derive_from_seed(rng.random());
         let tx_outputs = vec![TxOutput::onchain_native_currency(
             NativeCurrencyAmount::coins(1),
             rng.random(),

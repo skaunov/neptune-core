@@ -90,13 +90,13 @@ async fn can_prove_out_of_process_fibonacci() {
         .with_test_writer()
         .try_init();
 
-    // Merkle nodes
+    // Merkle nodes.
     let sibling1: Digest = Digest::new(bfe_array![101, 102, 103, 104, 105]);
     let sibling2: Digest = Digest::new(bfe_array![205, 204, 203, 202, 201]);
     let leaf: Digest = Digest::new(bfe_array![35, 34, 33, 32, 31]);
     let root: Digest = Tip5::hash_pair(Tip5::hash_pair(sibling1, leaf), sibling2);
 
-    // Macro
+    // Macro.
     let push_digest = |d: Digest| {
         d.reversed()
             .values()
@@ -232,7 +232,7 @@ async fn can_prove_out_of_process_fibonacci() {
     assert!(verdict);
 }
 
-// Some tests require functions that are hidden behind the #[cfg(test)]
+// Some tests require functions that are hidden behind the `#[cfg(test)]`
 // decoration. This test module activates that guard.
 #[cfg(test)]
 pub mod tests {

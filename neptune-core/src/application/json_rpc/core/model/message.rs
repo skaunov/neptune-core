@@ -6,7 +6,9 @@ use serde_tuple::Serialize_tuple;
 use tasm_lib::prelude::Digest;
 use tasm_lib::triton_vm::prelude::BFieldElement;
 
+use crate::api::export::BlockHeight;
 use crate::api::export::KeyType;
+use crate::api::export::NeptuneProof;
 use crate::api::export::Timestamp;
 use crate::application::json_rpc::core::model::block::body::*;
 use crate::application::json_rpc::core::model::block::header::*;
@@ -42,7 +44,7 @@ pub struct HeightRequest {}
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HeightResponse {
-    pub height: RpcBlockHeight,
+    pub height: BlockHeight,
 }
 
 #[derive(Clone, Copy, Debug, Serialize_tuple, Deserialize_tuple)]
@@ -356,8 +358,8 @@ pub struct ValidateNauAmountResponse {
 #[derive(Clone, Copy, Debug, Serialize_tuple, Deserialize_tuple)]
 #[serde(rename_all = "camelCase")]
 pub struct GetBlocksRequest {
-    pub from_height: RpcBlockHeight,
-    pub to_height: RpcBlockHeight,
+    pub from_height: BlockHeight,
+    pub to_height: BlockHeight,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -394,8 +396,8 @@ pub struct SubmitTransactionResponse {
 #[derive(Clone, Copy, Debug, Serialize_tuple, Deserialize_tuple)]
 #[serde(rename_all = "camelCase")]
 pub struct RescanAnnouncedRequest {
-    pub first: RpcBlockHeight,
-    pub last: RpcBlockHeight,
+    pub first: BlockHeight,
+    pub last: BlockHeight,
     pub derivation_path: Option<(KeyType, u64)>,
 }
 
@@ -406,8 +408,8 @@ pub struct RescanAnnouncedResponse {}
 #[derive(Clone, Copy, Debug, Serialize_tuple, Deserialize_tuple)]
 #[serde(rename_all = "camelCase")]
 pub struct RescanExpectedRequest {
-    pub first: RpcBlockHeight,
-    pub last: RpcBlockHeight,
+    pub first: BlockHeight,
+    pub last: BlockHeight,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
@@ -425,8 +427,8 @@ pub struct RescanOutgoingResponse {}
 #[derive(Clone, Copy, Debug, Serialize_tuple, Deserialize_tuple)]
 #[serde(rename_all = "camelCase")]
 pub struct RescanGuesserRewardsRequest {
-    pub first: RpcBlockHeight,
-    pub last: RpcBlockHeight,
+    pub first: BlockHeight,
+    pub last: BlockHeight,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
@@ -548,8 +550,8 @@ pub struct SendResponse {
 pub struct ClaimUtxoRequest {
     pub ciphertext: String,
 
-    /// Indicates how many blocks to look back in case the UTXO was already
-    /// mined.
+    /// Indicates how many blocks to look back in case 
+    /// the UTXO was already mined.
     pub max_search_depth: Option<u64>,
 }
 
@@ -557,6 +559,21 @@ pub struct ClaimUtxoRequest {
 #[serde(rename_all = "camelCase")]
 pub struct ClaimUtxoResponse {
     pub new: bool,
+}
+
+#[derive(Clone, Copy, Debug, Serialize_tuple, Deserialize_tuple)]
+#[serde(rename_all = "camelCase")]
+pub struct ProveAnTransferRequest {
+    pub tx_ix: u64,
+    pub utxo_ix: usize,
+    pub block: Digest,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProveAnTransferResponse {
+    pub claim: tasm_lib::triton_vm::proof::Claim,
+    pub proof: NeptuneProof,
 }
 
 /* Mining */
@@ -570,6 +587,19 @@ pub struct GetBlockTemplateRequest {
 #[serde(rename_all = "camelCase")]
 pub struct GetBlockTemplateResponse {
     pub template: Option<RpcBlockTemplate>,
+}
+
+#[derive(Clone, Debug, Serialize_tuple, Deserialize_tuple)]
+#[serde(rename_all = "camelCase")]
+pub struct TritonVerifyRequest {
+    pub claim: tasm_lib::triton_vm::proof::Claim,
+    pub proof: NeptuneProof,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TritonVerifyResponse {
+    pub is_valid: bool,
 }
 
 #[derive(Clone, Debug, Serialize_tuple, Deserialize_tuple)]
@@ -594,7 +624,7 @@ pub struct IncomingHistoryRequest {
     pub receiver_digest: Option<Digest>,
     pub lock_script_hash: Option<Digest>,
     pub sender_randomness: Option<Digest>,
-    pub confirmed_height: Option<RpcBlockHeight>,
+    pub confirmed_height: Option<BlockHeight>,
     pub confirmed_block_hash: Option<Digest>,
     pub include_orphaned: bool,
 
@@ -643,7 +673,7 @@ pub struct BlockHeightsByFlagsRequest {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BlockHeightsByFlagsResponse {
-    pub block_heights: Vec<RpcBlockHeight>,
+    pub block_heights: Vec<BlockHeight>,
 }
 
 #[derive(Clone, Debug, Serialize_tuple, Deserialize_tuple)]
@@ -655,7 +685,7 @@ pub struct BlockHeightsByAdditionRecordsRequest {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BlockHeightsByAdditionRecordsResponse {
-    pub block_heights: Vec<RpcBlockHeight>,
+    pub block_heights: Vec<BlockHeight>,
 }
 
 #[derive(Clone, Debug, Serialize_tuple, Deserialize_tuple)]
@@ -667,7 +697,7 @@ pub struct BlockHeightsByAbsoluteIndexSetsRequest {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BlockHeightsByAbsoluteIndexSetsResponse {
-    pub block_heights: Vec<RpcBlockHeight>,
+    pub block_heights: Vec<BlockHeight>,
 }
 
 #[derive(Clone, Debug, Serialize_tuple, Deserialize_tuple)]
@@ -680,11 +710,9 @@ pub struct WasMinedRequest {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WasMinedResponse {
-    pub block_heights: Vec<RpcBlockHeight>,
+    pub block_heights: Vec<BlockHeight>,
 }
-
 /* Mempool */
-#[derive(Clone, Copy, Debug, Serialize_tuple, Deserialize_tuple)]
 #[serde(rename_all = "camelCase")]
 pub struct TransactionsRequest {}
 

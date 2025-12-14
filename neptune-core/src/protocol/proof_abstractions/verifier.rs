@@ -17,7 +17,7 @@ use crate::protocol::consensus::transaction::validity::neptune_proof::Proof;
 // The cache enables mock proofs to be generated and validated immediately
 // which enables mock blocks and transactions.
 //
-// important:  for regtest mode to work properly, peers must be able to
+// Important:  for regtest mode to work properly, peers must be able to
 // verify eachother's proofs. There is presently no mechanism to sync
 // the cache between peers, though that could be a possibility.
 //
@@ -27,9 +27,7 @@ use crate::protocol::consensus::transaction::validity::neptune_proof::Proof;
 // In other words, distributed proving works for integration tests, but not
 // yet in a "real" regtest multi-node network.
 //
-// RAM Usage:
-//
-// Presently claims are never expired. So there is a very real chance of
+// RAM Usage: Presently claims are never expired. So there is a very real chance of
 // blowing up RAM.  Maybe not so problematic since regtest is generally started
 // from genesis block anyway.
 //
@@ -48,36 +46,37 @@ static CLAIMS_CACHE_ENABLED: std::sync::LazyLock<tokio::sync::Mutex<bool>> =
 /// claim and verification succeeds, the claim is added to the cache. The only
 /// other way to populate the cache is through method `cache_true_claim`.
 pub(crate) async fn verify(claim: Claim, proof: Proof, network: Network) -> bool {
-    // security: we do not accept mock proofs unless we ourselves
-    // are running a network that accepts mock-proofs, eg regtest.
+    /* Security: we do not accept mock proofs unless we ourselves
+    are running a network that accepts mock-proofs, e.g. regtest. */
     if network.use_mock_proof() {
-        return proof.is_valid_mock();
-    }
+        proof.is_valid_mock()
+    } else {
+        #[allow(unused_mut, reason = "is set in own block to minimize locking span")]
+        let mut c;
+        {
+            c = *CLAIMS_CACHE_ENABLED.lock().await && CLAIMS_CACHE.lock().await.contains(&claim);
+        }
+        if c {true} else {
+            #[cfg(test)]
+            let claim_clone = claim.clone();
 
-    {
-        let is_enabled = *CLAIMS_CACHE_ENABLED.lock().await;
-        if is_enabled && CLAIMS_CACHE.lock().await.contains(&claim) {
-            return true;
+            let verdict = task::spawn_blocking(move || {
+                triton_vm::verify(Stark::default(), &claim, &proof.into())
+            })
+            .await
+            .expect("should be able to verify proof in new Tokio task");
+
+            // TBD: we might want to enable a cache for mainnet usage.
+            // But we should probably use a cache that has a configurable max
+            // size, so we don't blow up RAM.
+            #[cfg(test)]
+            if verdict {
+                cache_true_claims([claim_clone]).await;
+            }
+
+            verdict
         }
     }
-
-    #[cfg(test)]
-    let claim_clone = claim.clone();
-
-    let verdict =
-        task::spawn_blocking(move || triton_vm::verify(Stark::default(), &claim, &proof.into()))
-            .await
-            .expect("should be able to verify proof in new tokio task");
-
-    // tbd: we might want to enable a cache for mainnet usage.
-    // but we should probably use a cache that has a configurable max
-    // size, so we don't blow up RAM.
-    #[cfg(test)]
-    if verdict {
-        cache_true_claims([claim_clone]).await;
-    }
-
-    verdict
 }
 
 /// Add claims to the [`CLAIMS_CACHE`].

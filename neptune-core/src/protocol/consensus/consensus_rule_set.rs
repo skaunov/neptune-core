@@ -26,7 +26,7 @@ pub const BLOCK_HEIGHT_HARDFORK_TVMV_PROOF_V1_TESTNET: BlockHeight =
 pub const BLOCK_HEIGHT_HARDFORK_TVMV_PROOF_V1_MAIN_NET: BlockHeight =
     BlockHeight::new(BFieldElement::new(23_401u64));
 
-/// Height of 1st block changing PoW algorithm to drop memory hardness
+/// Height of 1st block changing PoW algorithm to drop memory hardness.
 pub const BLOCK_HEIGHT_HARDFORK_BETA_MAIN_NET: BlockHeight =
     BlockHeight::new(BFieldElement::new(38_000u64));
 
@@ -53,13 +53,12 @@ pub enum ConsensusRuleSet {
     /// Allow reuse of preprocessing step for new block proposals
     HardforkAlpha,
 
-    /// Upgrade from Triton VM proof version v0 to v1
+    /// Upgrade from Triton VM proof version v0 to `v1`.
     #[default]
     TvmProofVersion1,
 
-    /// Remove memory hardness from PoW algorithm, add lustration barrier for
-    /// old inputs, compare difficulty to own block header instead of parent's
-    /// block header.
+    /// Remove memory hardness from PoW algorithm, add lustration barrier for old inputs, compare difficulty to own block header 
+    /// instead of parent's block header.
     HardforkBeta,
 }
 
@@ -665,7 +664,7 @@ pub(crate) mod tests {
                 guess: true,
                 tx_proving_capability: Some(TxProvingCapability::SingleProof),
 
-                // Must be non-zero since no archival mutator set is known
+                // Must be non-zero since no archival mutator set is known.
                 number_of_mps_per_utxo: 3,
                 ..Default::default()
             };

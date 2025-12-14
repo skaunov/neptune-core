@@ -1,4 +1,4 @@
-//! provides a symmetric key interface based on aes-256-gcm for sending and claiming [Utxo]
+//! provides a symmetric key interface based on `aes-256-gcm` for sending and claiming [`Utxo`]
 
 use aead::Aead;
 use aead::Key;
@@ -9,8 +9,6 @@ use anyhow::anyhow;
 use anyhow::bail;
 use anyhow::ensure;
 use anyhow::Result;
-#[cfg(any(test, feature = "arbitrary-impls"))]
-use arbitrary::Arbitrary;
 use bech32::FromBase32;
 use bech32::ToBase32;
 use serde::Deserialize;
@@ -67,7 +65,7 @@ const HRP_PREFIX: &str = "nsymk";
 ///
 /// this is an opaque type.  all fields are read-only via accessor methods.
 ///
-/// implementation note:
+/// ### implementation note
 ///
 /// Presently `SymmetricKey` holds only the seed value. All other values are
 /// derived on as-needed (lazy) basis.  This is memory efficient and cheap to
@@ -80,12 +78,12 @@ const HRP_PREFIX: &str = "nsymk";
 /// becomes worth it when amortized over multiple operations.
 ///
 /// a hybrid (cache-on-first-use) approach may be feasible, but would require
-/// that accessor methods accept &mut self which may not be acceptable.
+/// that accessor methods accept &mut self which may not be acceptable
 ///
 /// The implementation can be easily changed later if needed as the type is
 /// opaque.
 #[derive(Clone, Debug, Copy, Serialize, Deserialize, PartialEq, Eq)]
-#[cfg_attr(any(test, feature = "arbitrary-impls"), derive(Arbitrary))]
+#[cfg_attr(any(test, feature = "arbitrary-impls"), derive(arbitrary::Arbitrary))]
 pub struct SymmetricKey {
     seed: Digest,
 }
@@ -93,12 +91,12 @@ pub struct SymmetricKey {
 // future improvements: a strong argument can be made that this type should not
 // have any methods with outside types as parameters or return types.  for
 // example:
-//
+// ```
 // pub(crate) fn generate_announcement(
 //     &self,
 //     utxo_notification_payload: &UtxoNotificationPayload,
 // ) -> Announcement;
-//
+// ```
 // this method is dealing with types far outside the concern of
 // a key, which means the method belongs elsewhere.
 impl SymmetricKey {
@@ -196,18 +194,16 @@ impl SymmetricKey {
         self.unlock_key().hash()
     }
 
-    /// generates a lock script from the spending lock.
+    /// generates a lock script from the spending lock
     ///
-    /// Satisfaction of this lock script establishes the UTXO owner's assent to
-    /// the transaction.
+    /// Satisfaction of this lock script establishes the UTXO owner's assent to the transaction.
     pub fn lock_script(&self) -> LockScript {
         LockScript::standard_hash_lock_from_after_image(self.lock_after_image())
     }
 
     pub(crate) fn lock_script_and_witness(&self) -> LockScriptAndWitness {
-        let lock_script = self.lock_script();
         LockScriptAndWitness::new_with_nondeterminism(
-            lock_script.program,
+            self.lock_script(),
             NonDeterminism::new(self.unlock_key().reversed().values()),
         )
     }
@@ -332,5 +328,9 @@ mod tests {
                 "Invalid bech32 encoding must lead to error 3"
             );
         }
+    }
+
+    pub(super) fn flag(&self) -> BFieldElement {
+        SYMMETRIC_KEY_FLAG
     }
 }

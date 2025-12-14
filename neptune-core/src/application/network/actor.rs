@@ -924,8 +924,7 @@ impl NetworkActor {
                     }
 
                     // Signal the swarm to drop this connection
-                    // immediately to prevent Identify/Kademlia from
-                    // ever seeing this peer.
+                    // immediately to prevent Identify/Kademlia from ever seeing this peer.
                     self.swarm.close_connection(connection_id);
                 }
             }
@@ -952,10 +951,10 @@ impl NetworkActor {
                     self.active_connections.remove(&peer_id);
                     tracing::debug!("Connection to peer {peer_id} closed.",);
                 } else {
-                    // A bounced connection because of max number of peers being
-                    // reached triggers this event. We already log the bounce
-                    // events. The reason we still log something here is because
-                    // we cannot rule out triggers for this event.
+                    /* A bounced connection because of max number of peers being
+                    reached triggers this event. We already log the bounce
+                    events. The reason we still log something here is because
+                    we cannot rule out triggers for this event. */
                     tracing::trace!(target: "net::abrupt_closure", "Connection to {peer_id} closed abruptly: {:?}", cause);
                     // Do nothing: nothing to remove.
                 }
@@ -970,9 +969,9 @@ impl NetworkActor {
             } => {
                 let address = endpoint.get_remote_address().clone();
 
-                // Duplicate connection: book-keep address only. All the other
-                // actions that follow should only happen on the first
-                // connection to this peer.
+                /* Duplicate connection: book-keep address only. All the other
+                actions that follow should only happen on the first
+                connection to this peer. */
                 if self.active_connections.contains_key(&peer_id) {
                     self.active_connections.entry(peer_id).and_modify(
                         |(_timestamp, address_map)| {
@@ -1049,8 +1048,8 @@ impl NetworkActor {
 
     /// Check if a connection to the given address should be disallowed.
     ///
-    /// Return Some(reason) with reason: BounceReason if the connection should
-    /// be bounced; and None otherwise.
+    /// Return `Some(reason)` with `reason`: `BounceReason` if the connection should
+    /// be bounced; and `None` otherwise.
     fn should_bounce(&self, address: &Multiaddr) -> Option<BounceReason> {
         if self.active_connections.len() >= self.max_num_peers {
             tracing::debug!("Max active connections reached");

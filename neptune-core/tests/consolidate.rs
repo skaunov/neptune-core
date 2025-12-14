@@ -19,8 +19,7 @@ use tasm_lib::twenty_first::tip5::Digest;
 
 /// Return a connected cluster where the Alice node has mining rewards.
 ///
-/// Must be called with a unique test ID to avoid multiple tests requesting the
-/// same ports from the OS, when tests run in parallel.
+/// Must be called with a unique test ID to avoid multiple tests requesting the same ports from the OS, when tests run in parallel.
 async fn wallet_with_mining_rewards(num_blocks: u32, test_id: u8) -> (GenesisNode, GenesisNode) {
     let timeout_secs = 5;
 
@@ -58,8 +57,7 @@ async fn wallet_with_mining_rewards(num_blocks: u32, test_id: u8) -> (GenesisNod
 
 /// test: basic consolidation
 ///
-/// Scenario:
-///
+/// Scenario.
 ///  1. Alice and Bob run 2-node regtest network, from genesis.
 ///  2. Alice and both each have no funds initially.
 ///  3. Bob generates a receiving address and provides to Alice (out of band).
@@ -68,6 +66,7 @@ async fn wallet_with_mining_rewards(num_blocks: u32, test_id: u8) -> (GenesisNod
 ///  6. Bob verifies the unconfirmed balance matches consolidation amount.
 ///
 #[tokio::test(flavor = "multi_thread")]
+#[traced_test]
 pub async fn consolidation_basic() {
     logging::tracing_logger();
     let timeout_secs = 5;
@@ -79,7 +78,7 @@ pub async fn consolidation_basic() {
         .gsl
         .api_mut()
         .wallet_mut()
-        .next_receiving_address(KeyType::Generation)
+        .next_receiving_address(KeyType::Pokolen)
         .await
         .unwrap();
 

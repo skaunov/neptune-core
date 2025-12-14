@@ -9,11 +9,7 @@ use std::ops::IndexMut;
 
 use absolute_index_set::AbsoluteIndexSet;
 #[cfg(any(test, feature = "arbitrary-impls"))]
-use arbitrary::Arbitrary;
-#[cfg(any(test, feature = "arbitrary-impls"))]
 use arbitrary::Result;
-// #[cfg(any(test, feature = "arbitrary-impls"))]
-use get_size2::GetSize;
 use itertools::Itertools;
 use serde::Deserialize;
 use serde::Serialize;
@@ -35,8 +31,10 @@ use super::shared::CHUNK_SIZE;
 use super::MutatorSetError;
 use crate::prelude::twenty_first;
 
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, GetSize, BFieldCodec, TasmObject)]
-#[cfg_attr(any(test, feature = "arbitrary-impls"), derive(Arbitrary))]
+#[derive(
+    Clone, Debug, Deserialize, Serialize, PartialEq, Eq, get_size2::GetSize, BFieldCodec, TasmObject,
+)]
+#[cfg_attr(any(test, feature = "arbitrary-impls"), derive(arbitrary::Arbitrary))]
 pub struct RemovalRecord {
     pub absolute_indices: AbsoluteIndexSet,
     pub target_chunks: ChunkDictionary,
@@ -203,17 +201,17 @@ impl RemovalRecord {
         &self,
         mutator_set_accumulator: &MutatorSetAccumulator,
     ) -> bool {
-        let Ok((inactive, _)) = self
+        if let Ok((inactive, _)) = self
             .absolute_indices
             .split_by_activity(mutator_set_accumulator)
-        else {
-            return false;
-        };
-
-        let required_chunk_indices: HashSet<u64> = inactive.into_keys().collect();
-        let proven_chunk_indices: HashSet<u64> =
-            self.target_chunks.all_chunk_indices().into_iter().collect();
-        required_chunk_indices == proven_chunk_indices
+        {
+            let required_chunk_indices: HashSet<u64> = inactive.into_keys().collect();
+            let proven_chunk_indices: HashSet<u64> =
+                self.target_chunks.all_chunk_indices().into_iter().collect();
+            required_chunk_indices == proven_chunk_indices
+        } else {
+            false
+        }
     }
 
     /// Validates that a removal record is synchronized against the inactive
@@ -228,26 +226,26 @@ impl RemovalRecord {
         &self,
         mutator_set: &MutatorSetAccumulator,
     ) -> Result<(), RemovalRecordValidityError> {
-        if !self.has_required_authenticated_chunks(mutator_set) {
-            return Err(RemovalRecordValidityError::AbsentAuthenticatedChunk);
+        if self.has_required_authenticated_chunks(mutator_set) {
+            let swbfi_peaks = mutator_set.swbf_inactive.peaks();
+            let swbfi_leaf_count = mutator_set.swbf_inactive.num_leafs();
+            if let Some((chunk_index, _)) =
+                self.target_chunks
+                    .iter()
+                    .find(|(chunk_index, (mmr_proof, chunk))| {
+                        let leaf_digest = Tip5::hash(chunk);
+                        !mmr_proof.verify(*chunk_index, leaf_digest, &swbfi_peaks, swbfi_leaf_count)
+                    })
+            {
+                Err(RemovalRecordValidityError::InvalidSwbfiMmrMp {
+                    chunk_index: *chunk_index,
+                })
+            } else {
+                Ok(())
+            }
+        } else {
+            Err(RemovalRecordValidityError::AbsentAuthenticatedChunk)
         }
-
-        let swbfi_peaks = mutator_set.swbf_inactive.peaks();
-        let swbfi_leaf_count = mutator_set.swbf_inactive.num_leafs();
-        let maybe_invalid_chunk =
-            self.target_chunks
-                .iter()
-                .find(|(chunk_index, (mmr_proof, chunk))| {
-                    let leaf_digest = Tip5::hash(chunk);
-                    !mmr_proof.verify(*chunk_index, leaf_digest, &swbfi_peaks, swbfi_leaf_count)
-                });
-        if let Some((chunk_index, _)) = maybe_invalid_chunk {
-            return Err(RemovalRecordValidityError::InvalidSwbfiMmrMp {
-                chunk_index: *chunk_index,
-            });
-        }
-
-        Ok(())
     }
 
     /// Returns a hashmap from chunk index to chunk.
@@ -313,7 +311,7 @@ mod tests {
         let (_item, _mp, removal_record) = mock_item_mp_rr_for_init_msa();
 
         let serialization_result = bincode::serialize(&removal_record).unwrap();
-        let reported_size = removal_record.get_size();
+        let reported_size = get_size2::GetSize::get_size(&removal_record);
 
         // Assert that length of serialization result have same
         // order of magnitude as reported size result.

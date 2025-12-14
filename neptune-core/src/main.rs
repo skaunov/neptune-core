@@ -65,8 +65,7 @@ pub fn main() -> Result<()> {
 /// global collector configured based on RUST_LOG env var. Accepted `RUST_LOG`
 /// values are `trace`, `debug`, `info`, `warn`, and `error`.
 fn set_up_logger() {
-    // Use the log level set by the environment (which defaults to INFO) for
-    // messages logged in this crate. In upstream crates, hardcode it.
+    // Use the log level set by the environment (which defaults to INFO) for messages logged in this crate. In upstream crates, hardcode it.
     let env_filter = EnvFilter::builder()
         .with_default_directive(LevelFilter::INFO.into())
         .from_env_lossy()

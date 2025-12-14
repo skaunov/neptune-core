@@ -9,7 +9,7 @@ use crate::protocol::consensus::consensus_rule_set::TritonProofVersion;
 use crate::protocol::consensus::transaction::validity::neptune_proof::Proof;
 use crate::triton_vm::prelude::*;
 use itertools::Itertools;
-use tasm_lib::field;
+use tasm_lib::field as take_Rustfield;
 use tasm_lib::memory::encode_to_memory;
 use tasm_lib::memory::FIRST_NON_DETERMINISTICALLY_INITIALIZED_MEMORY_ADDRESS;
 use tasm_lib::prelude::Digest;
@@ -333,16 +333,20 @@ impl TritonProgram for SingleProof {
         let assemble_type_script_claim_template =
             library.import(Box::new(GenerateTypeScriptClaimTemplate));
 
-        let proof_collection_field_kernel_mast_hash = field!(ProofCollection::kernel_mast_hash);
+        let proof_collection_field_kernel_mast_hash =
+            take_Rustfield!(ProofCollection::kernel_mast_hash);
         let proof_collection_field_removal_records_integrity =
-            field!(ProofCollection::removal_records_integrity);
+            take_Rustfield!(ProofCollection::removal_records_integrity);
         let proof_collection_field_collect_lock_scripts =
-            field!(ProofCollection::collect_lock_scripts);
-        let proof_collection_field_kernel_to_outputs = field!(ProofCollection::kernel_to_outputs);
+            take_Rustfield!(ProofCollection::collect_lock_scripts);
+        let proof_collection_field_kernel_to_outputs =
+            take_Rustfield!(ProofCollection::kernel_to_outputs);
         let proof_collection_field_collect_type_scripts =
-            field!(ProofCollection::collect_type_scripts);
-        let proof_collection_field_lock_scripts_halt = field!(ProofCollection::lock_scripts_halt);
-        let proof_collection_field_type_scripts_halt = field!(ProofCollection::type_scripts_halt);
+            take_Rustfield!(ProofCollection::collect_type_scripts);
+        let proof_collection_field_lock_scripts_halt =
+            take_Rustfield!(ProofCollection::lock_scripts_halt);
+        let proof_collection_field_type_scripts_halt =
+            take_Rustfield!(ProofCollection::type_scripts_halt);
 
         let update_branch = library.import(Box::new(UpdateBranch));
         let merge_branch = library.import(Box::new(MergeBranch));
@@ -459,183 +463,183 @@ impl TritonProgram for SingleProof {
 
                 dup 1 addi 2
                 hint proof_collection_ptr = stack[0]
-                // _ [txk_digest] *spw disc *proof_collection
+                // _ [txk_digest] *spw discr *proof_collection
 
                 dup 0
                 call {audit_witness_of_proof_collection}
-                // _ [txk_digest] *spw disc *proof_collection proof_collection_size
+                // _ [txk_digest] *spw discr *proof_collection proof_collection_size
 
                 place 8
-                // _ pc_size [txk_digest] *spw disc *proof_collection
-                // _ [txk_digest] *spw disc *proof_collection <-- rename
+                // _ pc_size [txk_digest] *spw discr *proof_collection
+                // _ [txk_digest] *spw discr *proof_collection <-- rename
 
 
                 /* check kernel MAST hash */
 
                 dup 0 {&proof_collection_field_kernel_mast_hash}
-                // [txk_digest] *spw disc *proof_collection *kernel_mast_hash
+                // [txk_digest] *spw discr *proof_collection *kernel_mast_hash
 
                 push {Digest::LEN - 1} add
                 read_mem {Digest::LEN}
                 pop 1
                 hint kernel_mast_hash: Digest = stack[0..5]
-                // [txk_digest] *spw disc *proof_collection [kernel_mast_hash]
+                // [txk_digest] *spw discr *proof_collection [kernel_mast_hash]
 
                 dup 12
                 dup 12
                 dup 12
                 dup 12
                 dup 12
-                // [txk_digest] *spw disc *proof_collection [kernel_mast_hash] [txk_digest]
+                // [txk_digest] *spw discr *proof_collection [kernel_mast_hash] [txk_digest]
 
                 assert_vector
                 pop {Digest::LEN}
-                // [txk_digest] *spw disc *proof_collection
+                // [txk_digest] *spw discr *proof_collection
 
 
                 /* create and verify removal records integrity claim */
                 call {assemble_rri_claim}
                 hint rri_claim = stack[0]
-                // [txk_digest] *spw disc *proof_collection *rri_claim
+                // [txk_digest] *spw discr *proof_collection *rri_claim
 
                 dup 1 {&proof_collection_field_removal_records_integrity}
-                // [txk_digest] *spw disc *proof_collection *rri_claim *rri_proof
+                // [txk_digest] *spw discr *proof_collection *rri_claim *rri_proof
 
                 call {stark_verify}
-                // [txk_digest] *spw disc *proof_collection
+                // [txk_digest] *spw discr *proof_collection
 
 
                 /* create and verify kernel to outputs claim */
                 call {assemble_k2o_claim}
-                // [txk_digest] *spw disc *proof_collection *k2o_claim
+                // [txk_digest] *spw discr *proof_collection *k2o_claim
 
                 dup 1 {&proof_collection_field_kernel_to_outputs}
-                // [txk_digest] *spw disc *proof_collection *k2o_claim *proof
+                // [txk_digest] *spw discr *proof_collection *k2o_claim *proof
 
                 call {stark_verify}
-                // [txk_digest] *spw disc *proof_collection
+                // [txk_digest] *spw discr *proof_collection
 
 
                 /* assemble and verify collect lock scripts claim */
                 dup 0
-                // [txk_digest] *spw disc *proof_collection
+                // [txk_digest] *spw discr *proof_collection
 
                 call {assemble_cls_claim}
                 hint cls_claim = stack[0]
-                // [txk_digest] *spw disc *proof_collection *cls_claim
+                // [txk_digest] *spw discr *proof_collection *cls_claim
 
                 dup 1 dup 1 swap 1
-                // [txk_digest] *spw disc *proof_collection *cls_claim *cls_claim *proof_collection
+                // [txk_digest] *spw discr *proof_collection *cls_claim *cls_claim *proof_collection
 
                 {&proof_collection_field_collect_lock_scripts}
-                // [txk_digest] *spw disc *proof_collection *cls_claim *cls_claim *cls_proof
+                // [txk_digest] *spw discr *proof_collection *cls_claim *cls_claim *cls_proof
 
                 call {stark_verify}
-                // [txk_digest] *spw disc *proof_collection *cls_claim
+                // [txk_digest] *spw discr *proof_collection *cls_claim
 
 
                 /* assemble and verify collect type scripts claim */
 
                 dup 1
-                // [txk_digest] *spw disc *proof_collection *cls_claim *proof_collection
+                // [txk_digest] *spw discr *proof_collection *cls_claim *proof_collection
 
                 call {assemble_cts_claim}
                 hint cts_claim = stack[0]
-                // [txk_digest] *spw disc *proof_collection *cls_claim *cts_claim
+                // [txk_digest] *spw discr *proof_collection *cls_claim *cts_claim
 
                 dup 0 dup 3
-                // [txk_digest] *spw disc *proof_collection *cls_claim *cts_claim *cts_claim *proof_collection
+                // [txk_digest] *spw discr *proof_collection *cls_claim *cts_claim *cts_claim *proof_collection
 
                 {&proof_collection_field_collect_type_scripts}
-                // [txk_digest] *spw disc *proof_collection *cls_claim *cts_claim *cts_claim *cts_proof
+                // [txk_digest] *spw discr *proof_collection *cls_claim *cts_claim *cts_claim *cts_proof
 
                 call {stark_verify}
-                // [txk_digest] *spw disc *proof_collection *cls_claim *cts_claim
+                // [txk_digest] *spw discr *proof_collection *cls_claim *cts_claim
 
 
                 /* for all lock scripts, assemble claim and verify */
                 dup 2
-                // [txk_digest] *spw disc *proof_collection *cls_claim *cts_claim *proof_collection
+                // [txk_digest] *spw discr *proof_collection *cls_claim *cts_claim *proof_collection
 
                 call {assemble_lock_script_claim_template}
                 hint program_digest_ptr = stack[0]
                 hint lock_script_claim_ptr = stack[1]
-                // [txk_digest] *spw disc *proof_collection *cls_claim *cts_claim *ls_claim_template *program_digest_ptr
+                // [txk_digest] *spw discr *proof_collection *cls_claim *cts_claim *ls_claim_template *program_digest_ptr
 
                 dup 3 {&claim_field_with_size_output}
                 hint output_size = stack[0]
                 hint lock_script_hashes = stack[1]
-                // [txk_digest] *spw disc *proof_collection *cls_claim *cts_claim *ls_claim_template *program_digest_ptr *lock_script_hashes size
+                // [txk_digest] *spw discr *proof_collection *cls_claim *cts_claim *ls_claim_template *program_digest_ptr *lock_script_hashes size
 
                 dup 1 add addi 2
                 hint eof = stack[0]
-                // [txk_digest] *spw disc *proof_collection *cls_claim *cts_claim *ls_claim_template *program_digest_ptr *lock_script_hashes *eof
+                // [txk_digest] *spw discr *proof_collection *cls_claim *cts_claim *ls_claim_template *program_digest_ptr *lock_script_hashes *eof
 
                 swap 1 addi 2
                 hint lock_script_hashes_i = stack[0]
-                // [txk_digest] *spw disc *proof_collection *cls_claim *cts_claim *ls_claim_template *program_digest_ptr *eof *lock_script_hashes[0]
+                // [txk_digest] *spw discr *proof_collection *cls_claim *cts_claim *ls_claim_template *program_digest_ptr *eof *lock_script_hashes[0]
 
                 swap 1
-                // [txk_digest] *spw disc *proof_collection *cls_claim *cts_claim *ls_claim_template *program_digest_ptr *lock_script_hashes[0] *eof
+                // [txk_digest] *spw discr *proof_collection *cls_claim *cts_claim *ls_claim_template *program_digest_ptr *lock_script_hashes[0] *eof
 
 
                 dup 6
-                // [txk_digest] *spw disc *proof_collection *cls_claim *cts_claim *ls_claim_template *program_digest_ptr *lock_script_hashes[0] *eof *proof_collection
+                // [txk_digest] *spw discr *proof_collection *cls_claim *cts_claim *ls_claim_template *program_digest_ptr *lock_script_hashes[0] *eof *proof_collection
 
                 {&proof_collection_field_lock_scripts_halt} addi 1
                 hint lock_script_proofs_i_si = stack[0]
-                // [txk_digest] *spw disc *proof_collection *cls_claim *cts_claim *ls_claim_template *program_digest_ptr *lock_script_hashes *eof *lock_script_proofs[0]_si
+                // [txk_digest] *spw discr *proof_collection *cls_claim *cts_claim *ls_claim_template *program_digest_ptr *lock_script_hashes *eof *lock_script_proofs[0]_si
 
                 read_mem 1
                 hint proof_size = stack[1]
                 addi 2
                 swap 1
-                // [txk_digest] *spw disc *proof_collection *cls_claim *cts_claim *ls_claim_template *program_digest_ptr *lock_script_hashes *eof *lock_script_proofs[0] proof_size
+                // [txk_digest] *spw discr *proof_collection *cls_claim *cts_claim *ls_claim_template *program_digest_ptr *lock_script_hashes *eof *lock_script_proofs[0] proof_size
 
                 call {verify_scripts_loop_label}
 
                 pop 5 pop 1
-                // [txk_digest] *spw disc *proof_collection *cls_claim *cts_claim
+                // [txk_digest] *spw discr *proof_collection *cls_claim *cts_claim
 
 
                 /* for all type scripts, assemble claim and verify */
                 dup 2
-                // [txk_digest] *spw disc *proof_collection *cls_claim *cts_claim *proof_collection
+                // [txk_digest] *spw discr *proof_collection *cls_claim *cts_claim *proof_collection
 
                 call {assemble_type_script_claim_template}
                 hint program_digest_ptr = stack[0]
                 hint type_script_claim_ptr = stack[1]
-                // [txk_digest] *spw disc *proof_collection *cls_claim *cts_claim *ts_claim_template *program_digest_ptr
+                // [txk_digest] *spw discr *proof_collection *cls_claim *cts_claim *ts_claim_template *program_digest_ptr
 
                 dup 2 {&claim_field_with_size_output}
                 hint output_size = stack[0]
                 hint type_script_hashes = stack[1]
-                // [txk_digest] *spw disc *proof_collection *cls_claim *cts_claim *ts_claim_template *program_digest_ptr *type_script_hashes size
+                // [txk_digest] *spw discr *proof_collection *cls_claim *cts_claim *ts_claim_template *program_digest_ptr *type_script_hashes size
 
                 dup 1 add addi 2
                 hint eof = stack[0]
-                // [txk_digest] *spw disc *proof_collection *cls_claim *cts_claim *ts_claim_template *program_digest_ptr *type_script_hashes *eof
+                // [txk_digest] *spw discr *proof_collection *cls_claim *cts_claim *ts_claim_template *program_digest_ptr *type_script_hashes *eof
 
                 pick 1 addi 2
                 hint type_script_hashes_i = stack[0]
                 place 1
-                // [txk_digest] *spw disc *proof_collection *cls_claim *cts_claim *ts_claim_template *program_digest_ptr *type_script_hashes[0] *eof
+                // [txk_digest] *spw discr *proof_collection *cls_claim *cts_claim *ts_claim_template *program_digest_ptr *type_script_hashes[0] *eof
 
 
                 dup 6
-                // [txk_digest] *spw disc *proof_collection *cls_claim *cts_claim *ts_claim_template *program_digest_ptr *type_script_hashes[0] *eof *proof_collection
+                // [txk_digest] *spw discr *proof_collection *cls_claim *cts_claim *ts_claim_template *program_digest_ptr *type_script_hashes[0] *eof *proof_collection
 
                 {&proof_collection_field_type_scripts_halt}
                 addi 1
                 hint type_script_proofs_i_si = stack[0]
-                // [txk_digest] *spw disc *proof_collection *cls_claim *cts_claim *ts_claim_template *program_digest_ptr *type_script_hashes *eof *type_script_proofs[0]_si
+                // [txk_digest] *spw discr *proof_collection *cls_claim *cts_claim *ts_claim_template *program_digest_ptr *type_script_hashes *eof *type_script_proofs[0]_si
 
                 read_mem 1
                 hint proof_size = stack[1]
                 addi 2
                 place 1
                 hint type_script_proofs_i = stack[1]
-                // [txk_digest] *spw disc *proof_collection *cls_claim *cts_claim *ts_claim_template *program_digest_ptr *type_script_hashes *eof *type_script_proofs[0] proof_size
+                // [txk_digest] *spw discr *proof_collection *cls_claim *cts_claim *ts_claim_template *program_digest_ptr *type_script_hashes *eof *type_script_proofs[0] proof_size
 
                 call {verify_scripts_loop_label}
 
@@ -779,7 +783,7 @@ pub(crate) mod tests {
     use crate::protocol::consensus::type_scripts::time_lock::neptune_arbitrary::arbitrary_primitive_witness_with_expired_timelocks;
     use crate::protocol::proof_abstractions::tasm::builtins as tasm;
     use crate::protocol::proof_abstractions::tasm::program::tests::test_program_snapshot;
-    use crate::protocol::proof_abstractions::tasm::program::spec::TritonProgramSpecification;
+    use crate::protocol::proof_abstractions::tasm::program::tests::TritonProgramSpecification;
     use crate::protocol::proof_abstractions::tasm::program::TritonError;
     use crate::protocol::proof_abstractions::timestamp::Timestamp;
     use crate::tests::shared_tokio_runtime;

@@ -49,6 +49,7 @@ pub mod globalstate;
 pub mod mock_tx;
 pub mod randomness_impl;
 pub mod strategies;
+pub mod arbitrary_arbitrary_impls;
 
 /// Ubiquitous container holding any combination of randomness used in the test helpers; implements both
 /// random and `proptest` generation. Useful when helper needs few random values and a call to it becomes

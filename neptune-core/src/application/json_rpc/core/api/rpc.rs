@@ -9,9 +9,10 @@ use tasm_lib::triton_vm::prelude::BFieldElement;
 use thiserror::Error;
 
 use crate::api::export::AnnouncementFlag;
+use crate::api::export::BlockHeight;
 use crate::api::export::KeyType;
 use crate::api::export::Timestamp;
-use crate::application::json_rpc::core::model::block::header::RpcBlockHeight;
+use crate::protocol::consensus::transaction::validity::neptune_proof::NeptuneProof;
 use crate::application::json_rpc::core::model::block::header::RpcBlockPow;
 use crate::application::json_rpc::core::model::block::transaction_kernel::RpcAbsoluteIndexSet;
 use crate::application::json_rpc::core::model::block::transaction_kernel::RpcAdditionRecord;
@@ -414,8 +415,8 @@ pub trait RpcApi: Sync + Send {
     /// the genesis block.
     async fn get_blocks(
         &self,
-        from_height: RpcBlockHeight,
-        to_height: RpcBlockHeight,
+        from_height: BlockHeight,
+        to_height: BlockHeight,
     ) -> RpcResult<GetBlocksResponse> {
         self.get_blocks_call(GetBlocksRequest {
             from_height,
@@ -451,12 +452,10 @@ pub trait RpcApi: Sync + Send {
         request: SubmitTransactionRequest,
     ) -> RpcResult<SubmitTransactionResponse>;
 
-    /* Personal */
-
     async fn rescan_announced(
         &self,
-        first: RpcBlockHeight,
-        last: RpcBlockHeight,
+        first: BlockHeight,
+        last: BlockHeight,
         derivation_path: Option<(KeyType, u64)>,
     ) -> RpcResult<RescanAnnouncedResponse> {
         self.rescan_announced_call(RescanAnnouncedRequest {
@@ -474,8 +473,8 @@ pub trait RpcApi: Sync + Send {
 
     async fn rescan_expected(
         &self,
-        first: RpcBlockHeight,
-        last: RpcBlockHeight,
+        first: BlockHeight,
+        last: BlockHeight,
     ) -> RpcResult<RescanExpectedResponse> {
         self.rescan_expected_call(RescanExpectedRequest { first, last })
             .await
@@ -497,8 +496,8 @@ pub trait RpcApi: Sync + Send {
 
     async fn rescan_guesser_rewards(
         &self,
-        first: RpcBlockHeight,
-        last: RpcBlockHeight,
+        first: BlockHeight,
+        last: BlockHeight,
     ) -> RpcResult<RescanGuesserRewardsResponse> {
         self.rescan_guesser_rewards_call(RescanGuesserRewardsRequest { first, last })
             .await
@@ -521,8 +520,7 @@ pub trait RpcApi: Sync + Send {
 
     /// Endpoint to increase the derivation index to a new value.
     ///
-    /// All keys between the current derivation value and the value given to
-    /// this endpoint (both inclusive) will be added to the wallet.
+    /// All keys between the current derivation value and the value given to this endpoint (both inclusive) will be added to the wallet.
     async fn set_derivation_index(
         &self,
         key_type: KeyType,
@@ -565,7 +563,7 @@ pub trait RpcApi: Sync + Send {
         receiver_digest: Option<Digest>,
         lock_script_hash: Option<Digest>,
         sender_randomness: Option<Digest>,
-        confirmed_height: Option<RpcBlockHeight>,
+        confirmed_height: Option<BlockHeight>,
         confirmed_block_hash: Option<Digest>,
         max_num_elements: Option<u64>,
         page: Option<u64>,
@@ -702,6 +700,40 @@ pub trait RpcApi: Sync + Send {
     }
 
     async fn claim_utxo_call(&self, request: ClaimUtxoRequest) -> RpcResult<ClaimUtxoResponse>;
+
+    /// Prove a transfer of the native coin from the current wallet.
+    /// Discloses amount, addresses, and other transfer information while
+    /// keeping sensitive data hidden in the proof.
+    async fn prove_an_transfer(
+        &self,
+        tx_ix: u64,
+        utxo_ix: usize,
+        block: Digest,
+    ) -> RpcResult<ProveAnTransferResponse> {
+        self.prove_an_transfer_call(ProveAnTransferRequest {
+            tx_ix,
+            utxo_ix,
+            block,
+        })
+        .await
+    }
+
+    async fn prove_an_transfer_call(&self, request: ProveAnTransferRequest) -> RpcResult<ProveAnTransferResponse>;
+
+    /// Verify a Triton VM (claim, proof) pair.
+    /// Returns `true` if the proof is valid for the given claim.
+    /// 
+    /// # not panics
+    /// it's private and this trait is always invoked from Tokio
+    async fn triton_verify(
+        &self,
+        claim: tasm_lib::triton_vm::proof::Claim,
+        proof: NeptuneProof,
+    ) -> TritonVerifyResponse {
+        self.triton_verify_call(TritonVerifyRequest { claim, proof }).await.expect("infallible")
+    }
+
+    async fn triton_verify_call(&self, request: TritonVerifyRequest) -> RpcResult<TritonVerifyResponse>;
 
     /* Mining */
 

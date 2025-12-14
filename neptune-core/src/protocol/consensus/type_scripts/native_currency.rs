@@ -20,7 +20,6 @@ use tasm_lib::triton_vm::prelude::*;
 use super::amount::total_amount_main_loop::DigestSource;
 use super::amount::total_amount_main_loop::TotalAmountMainLoop;
 use super::native_currency_amount::NativeCurrencyAmount;
-use super::TypeScript;
 use super::TypeScriptWitness;
 use crate::protocol::consensus::block::MINING_REWARD_TIME_LOCK_PERIOD;
 use crate::protocol::consensus::transaction::primitive_witness::PrimitiveWitness;
@@ -232,7 +231,7 @@ impl TritonProgram for NativeCurrency {
             pop 1
             // _ [txkmh] *ncw
 
-            /* Divine and authenticate coinbase field */
+            /* `divine` and authenticate coinbase field */
             dup 0
             {&field_with_size_coinbase}
             hint coinbase_ptr = stack[1]
@@ -263,7 +262,7 @@ impl TritonProgram for NativeCurrency {
             // _ [txkmh] *ncw *coinbase
 
 
-            /* Divine and authenticate fee field */
+            /* `divine` and authenticate fee field */
             dup 1
             // _ [txkmh] *ncw *coinbase *ncw
 
@@ -292,7 +291,7 @@ impl TritonProgram for NativeCurrency {
             // _ [txkmh] *ncw *coinbase *fee
 
 
-            /* Verify that fee is non-negative when coinbase is set */
+            /* verify that fee is non-negative when coinbase is set */
             dup 1
             read_mem 1 pop 1
             // _ [txkmh] *ncw *coinbase *fee coinbase_discriminant
@@ -344,7 +343,7 @@ impl TritonProgram for NativeCurrency {
             // _ [txkmh] *ncw *coinbase *fee
 
 
-            /* Divine and authenticate timestamp */
+            /* `divine` and authenticate timestamp */
             dup 7 dup 7 dup 7 dup 7 dup 7
             // _ [txkmh] *ncw *coinbase *fee [txkmh]
 
@@ -394,7 +393,7 @@ impl TritonProgram for NativeCurrency {
             // _ [txkmh] *ncw *coinbase *fee *salted_input_utxos *salted_output_utxos
 
 
-            /* Compute left-hand side: sum inputs + (optional coinbase) */
+            /* compute left-hand side: sum inputs + (optional coinbase) */
             swap 1 {&field_utxos}
             // _ [txkmh] *ncw *coinbase *fee *salted_output_utxos *input_utxos
 
@@ -431,7 +430,7 @@ impl TritonProgram for NativeCurrency {
             hint total_input : u128 = stack[0..4]
 
 
-            /* Compute right-hand side: fee + sum outputs */
+            /* compute right-hand side: fee + sum outputs */
             dup 11 dup 11
             // _ [txkmh] *ncw *coinbase *fee *salted_output_utxos N N *input_utxos[N]_si * * * [total_input] *fee *salted_output_utxos
 
@@ -624,11 +623,12 @@ impl TritonProgram for NativeCurrency {
     }
 }
 
-impl TypeScript for NativeCurrency {
+impl super::TypeScript for NativeCurrency {
     type State = NativeCurrencyAmount;
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, BFieldCodec, GetSize, PartialEq, Eq, TasmObject)]
+#[derive(Debug, Clone, Deserialize, Serialize, BFieldCodec, PartialEq, Eq, TasmObject)]
+#[cfg_attr(any(test, feature = "arbitrary-impls"), derive(get_size2::GetSize))]
 pub struct NativeCurrencyWitness {
     pub salted_input_utxos: SaltedUtxos,
     pub salted_output_utxos: SaltedUtxos,
@@ -761,6 +761,7 @@ pub mod tests {
     use crate::application::triton_vm_job_queue::TritonVmJobPriority;
     use crate::application::triton_vm_job_queue::TritonVmJobQueue;
     use crate::protocol::consensus::transaction::announcement::Announcement;
+    use crate::protocol::consensus::transaction::lock_script::DigestLockScript;
     use crate::protocol::consensus::transaction::lock_script::LockScriptAndWitness;
     use crate::protocol::consensus::transaction::transaction_kernel::TransactionKernelModifier;
     use crate::protocol::consensus::transaction::utxo::Utxo;
@@ -768,8 +769,8 @@ pub mod tests {
     use crate::protocol::consensus::type_scripts::time_lock::neptune_arbitrary::arbitrary_primitive_witness_with_active_timelocks;
     use crate::protocol::consensus::type_scripts::time_lock::TimeLock;
     use crate::protocol::proof_abstractions::tasm::builtins as tasm;
-    use crate::protocol::proof_abstractions::tasm::program::spec::TritonProgramSpecification;
     use crate::protocol::proof_abstractions::tasm::program::tests::test_program_snapshot;
+    use crate::protocol::proof_abstractions::tasm::program::tests::TritonProgramSpecification;
     use crate::protocol::proof_abstractions::tasm::program::TritonError;
     use crate::protocol::proof_abstractions::timestamp::Timestamp;
     use crate::protocol::proof_abstractions::verifier::verify;
@@ -981,12 +982,11 @@ pub mod tests {
     }
 
     #[test]
+    /// Generate a tx with no inputs, no outputs and zero fee, commonly
+    /// referred to as a "nop" transaction. This must pass.
     fn native_currency_derived_witness_generates_accepting_tasm_program_empty_tx() {
-        // Generate a tx with no inputs, no outputs and zero fee, commonly
-        // referred to as a "nop" transaction. This must pass.
-        let mut test_runner = TestRunner::deterministic();
         let nop = PrimitiveWitness::arbitrary_with_size_numbers(Some(0), 0, 0)
-            .new_tree(&mut test_runner)
+            .new_tree(&mut TestRunner::deterministic())
             .unwrap()
             .current();
         let native_currency_witness = NativeCurrencyWitness::from(nop);
@@ -1067,9 +1067,9 @@ pub mod tests {
         //      in the other transaction, and this positive fee must be paid for
         //      by offsetting the inflation created in this transaction.
         let input =
-            Utxo::new_native_currency(Digest::default(), NativeCurrencyAmount::from_nau(1_000));
+            Utxo::new_native_currency(DigestLockScript(Digest::default()), NativeCurrencyAmount::from_nau(1_000));
         let output = Utxo::new_native_currency(
-            Digest::default(),
+            DigestLockScript(Digest::default()),
             NativeCurrencyAmount::from_nau(167_999_999_999_999_999_999_999_999_999_999_999_999i128),
         );
         let fee = NativeCurrencyAmount::from_nau(

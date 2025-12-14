@@ -63,18 +63,19 @@ impl From<&UnlockedUtxo> for StrongUtxoKey {
 /// note: the very first schema version was 0, ie u16::default()
 pub(super) const WALLET_DB_SCHEMA_VERSION: u16 = 3;
 
-/// represents logical "tables" in the Wallet database as used by `DbtSchema`.
+/// Represents logical "tables" in the Wallet database as used by `DbtSchema`.
 ///
-/// Schema Versioning and Migration:
+/// Schema Versioning and Migration
+/// ============
 ///
-/// there are two types of supported schema modifications:
+/// there are two types of supported schema modifications
 ///  1. a new field is added to this struct (at the end)
 ///  2. the type of an existing field is modified (including any sub-type)
 ///
-///  type (1) does not require WALLET_DB_SCHEMA_VERSION to change, or a migration.
-///  type (2) does require WALLET_BD_SCHEMA_VERSION to change, and a migration.
+///  type (1.) does not require WALLET_DB_SCHEMA_VERSION to change, or a migration.
+///  type (2.) does require WALLET_BD_SCHEMA_VERSION to change, and a migration.
 ///
-/// For migrations, see `migrate_db::migrate_db_impl`
+/// for migrations, see `migrate_db::migrate_db_impl`
 ///
 /// Table Ordering: Important!
 ///
@@ -85,7 +86,7 @@ pub(super) const WALLET_DB_SCHEMA_VERSION: u16 = 3;
 /// in the same order.  If not, older databases will not be loaded
 /// correctly.
 ///
-/// The fields of WalletDbTable are listed in order, and the
+/// The fields of `WalletDbTable` are listed in order, and the
 /// load_schema_in_order() method loads them in the same order.
 ///
 /// Any new fields must be added at the end.
@@ -107,7 +108,7 @@ pub(super) struct WalletDbTables {
     /// Length must match [`Self::addition_record_to_expected_utxo`].
     pub(super) expected_utxos: DbtVec<ExpectedUtxo>,
 
-    /// list of transactions sent by this wallet.
+    /// List of transactions sent by this wallet.
     // table number: 2
     pub(super) sent_transactions: DbtVec<SentTransaction>,
 

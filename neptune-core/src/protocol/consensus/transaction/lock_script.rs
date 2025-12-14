@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::sync::Arc;
 
 #[cfg(any(test, feature = "arbitrary-impls"))]
@@ -8,6 +7,7 @@ use itertools::Itertools;
 use rand::Rng;
 use serde::Deserialize;
 use serde::Serialize;
+use tasm_lib::prelude::TasmObject;
 use tasm_lib::triton_vm::prelude::*;
 use tasm_lib::twenty_first::math::b_field_element::BFieldElement;
 use tasm_lib::twenty_first::math::bfield_codec::BFieldCodec;
@@ -61,8 +61,8 @@ impl LockScript {
         }
     }
 
-    pub fn hash(&self) -> Digest {
-        self.program.hash()
+    pub fn hash(&self) -> DigestLockScript {
+        DigestLockScript(self.program.hash())
     }
 
     pub fn hash_lock_from_after_image_192_bit_security(after_image: [BFieldElement; 3]) -> Self {
@@ -115,8 +115,7 @@ impl LockScript {
     /// the after-image. This type of lock script is called "standard hash
     /// lock".
     ///
-    /// Satisfaction of this lock script establishes the UTXO owner's assent to
-    /// the transaction.
+    /// Satisfaction of this lock script establishes the UTXO owner's assent to the transaction.
     pub fn standard_hash_lock_from_after_image(after_image: Digest) -> LockScript {
         let push_spending_lock_digest_to_stack = after_image
             .values()
@@ -137,7 +136,7 @@ impl LockScript {
         instructions.into()
     }
 
-    /// A lock script that is guaranteed to fail
+    /// a lock script that is guaranteed to fail
     pub(crate) fn burn() -> Self {
         Self {
             program: triton_program! {
@@ -147,24 +146,16 @@ impl LockScript {
     }
 }
 
-#[cfg(any(test, feature = "arbitrary-impls"))]
-impl<'a> Arbitrary<'a> for LockScript {
-    fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<Self> {
-        let program = Program::arbitrary(u)?;
-        Ok(LockScript { program })
-    }
-}
-
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, GetSize, BFieldCodec)]
 pub struct LockScriptAndWitness {
-    pub program: Program,
+    pub program: LockScript,
     nd_memory: Vec<(BFieldElement, BFieldElement)>,
     nd_tokens: Vec<BFieldElement>,
     nd_digests: Vec<Digest>,
 }
 
 impl LockScriptAndWitness {
-    pub fn new_with_nondeterminism(program: Program, witness: NonDeterminism) -> Self {
+    pub fn new_with_nondeterminism(program: LockScript, witness: NonDeterminism) -> Self {
         Self {
             program,
             nd_memory: witness.ram.into_iter().collect(),
@@ -173,13 +164,11 @@ impl LockScriptAndWitness {
         }
     }
 
-    /// Create a [`LockScriptAndWitness`] whose lock script is a standard hash
-    /// lock, from the preimage.
+    /// Create a [`LockScriptAndWitness`] whose lock script
+    /// is a standard hash lock, from the preimage.
     pub(crate) fn standard_hash_lock_from_preimage(preimage: Digest) -> LockScriptAndWitness {
-        let after_image = preimage.hash();
-        let lock_script = LockScript::standard_hash_lock_from_after_image(after_image);
         LockScriptAndWitness::new_with_nondeterminism(
-            lock_script.program,
+            LockScript::standard_hash_lock_from_after_image(preimage.hash()),
             NonDeterminism::new(preimage.reversed().values()),
         )
     }
@@ -189,16 +178,7 @@ impl LockScriptAndWitness {
         self.nd_tokens = tokens;
     }
 
-    pub fn new(program: Program) -> Self {
-        Self {
-            program,
-            nd_memory: vec![],
-            nd_tokens: vec![],
-            nd_digests: vec![],
-        }
-    }
-
-    pub fn new_with_tokens(program: Program, tokens: Vec<BFieldElement>) -> Self {
+    pub fn new_with_tokens(program: LockScript, tokens: Vec<BFieldElement>) -> Self {
         Self {
             program,
             nd_memory: vec![],
@@ -209,22 +189,23 @@ impl LockScriptAndWitness {
 
     pub fn nondeterminism(&self) -> NonDeterminism {
         NonDeterminism::new(self.nd_tokens.clone())
-            .with_digests(self.nd_digests.clone())
-            .with_ram(self.nd_memory.iter().copied().collect::<HashMap<_, _>>())
+        // TODO **test the assumption**
+        // .with_digests(self.nd_digests.clone())
+        // .with_ram(self.nd_memory.iter().copied().collect::<HashMap<_, _>>())
     }
 
     /// Determine if the given UTXO can be unlocked with this
     /// lock-script-and-witness pair.
     pub fn can_unlock(&self, utxo: &Utxo) -> bool {
-        if self.program.hash() != utxo.lock_script_hash() {
-            return false;
+        if self.program.program.hash() == utxo.lock_script_hash().0 {
+            self.halts_gracefully(rand::rng().random::<Digest>().values().into())
+        } else {
+            false
         }
-        let any_digest = rand::rng().random::<Digest>();
-        self.halts_gracefully(any_digest.values().into())
     }
 
     pub fn halts_gracefully(&self, public_input: PublicInput) -> bool {
-        VM::run(self.program.clone(), public_input, self.nondeterminism()).is_ok()
+        VM::run(self.program.program.clone(), public_input, self.nondeterminism()).is_ok()
     }
 
     /// Assuming the lock script halts gracefully, prove it.
@@ -234,24 +215,43 @@ impl LockScriptAndWitness {
         triton_vm_job_queue: Arc<TritonVmJobQueue>,
         proof_job_options: TritonVmProofJobOptions,
     ) -> Result<Proof, CreateProofError> {
-        let claim = Claim::new(self.program.hash()).with_input(public_input.individual_tokens);
         ProofBuilder::new()
-            .program(self.program.clone())
-            .claim(claim)
-            .nondeterminism(|| self.nondeterminism())
-            .job_queue(triton_vm_job_queue)
-            .proof_job_options(proof_job_options)
-            .build()
-            .await
+        .program(self.program.program.clone())
+        .claim(Claim::new(self.program.hash().0).with_input(public_input.individual_tokens))
+        .nondeterminism(|| self.nondeterminism())
+        .job_queue(triton_vm_job_queue)
+        .proof_job_options(proof_job_options)
+        .build().await
+    }
+}
+
+/// should not have `impl From<Digest>` as it defies the purpose of this newtype, which is to distinguish between a raw digest and a lock script hash. 
+/// 
+/// #### a slop details
+/// If we had `impl From<Digest>`, then it would be easy to accidentally use a raw digest where a lock script hash is expected, or vice versa. By not having this `impl`, we force the programmer to be explicit about when 
+/// they are converting between these types, which can help prevent bugs and improve code clarity.
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, BFieldCodec, TasmObject, Hash, get_size2::GetSize)]
+#[cfg_attr(
+    any(test, feature = "arbitrary-impls"),
+    derive(arbitrary::Arbitrary, Default)
+)]
+pub struct DigestLockScript(pub Digest);
+// impl From<Digest> for DigestLockScript {
+//     fn from(digest: Digest) -> Self {
+//         Self(digest)
+//     }
+// }
+impl rand::distr::Distribution<DigestLockScript> for rand::distr::StandardUniform {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> DigestLockScript {
+        DigestLockScript(rng.random())
     }
 }
 
 #[cfg(any(test, feature = "arbitrary-impls"))]
 impl<'a> Arbitrary<'a> for LockScriptAndWitness {
     fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<Self> {
-        let program = Program::arbitrary(u)?;
         let tokens = Digest::arbitrary(u)?.values().to_vec();
-        Ok(LockScriptAndWitness::new_with_tokens(program, tokens))
+        Ok(LockScriptAndWitness::new_with_tokens(LockScript{program: Program::arbitrary(u)?}, tokens))
     }
 }
 

@@ -1,3 +1,4 @@
+// #![feature(bool_to_result)]
 // recursion limit for macros (e.g. triton_asm!)
 #![recursion_limit = "2048"]
 #![deny(clippy::shadow_unrelated)]
@@ -15,13 +16,13 @@
 // feature is enable only conditionally, the annotation to use is:
 // `#[cfg_attr(coverage_nightly, coverage(off))]`.
 //
-// See also:
+// See also
 // - https://github.com/Neptune-Crypto/neptune-core/issues/570
 // - https://github.com/taiki-e/cargo-llvm-cov#exclude-code-from-coverage
 // - https://github.com/rust-lang/rust/issues/84605
 #![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 
-// danda: making all of these pub for now, so docs are generated.
+// @danda: making all of these pub for now, so docs are generated.
 // later maybe we ought to split some stuff out into re-usable crate(s)...?
 pub mod api;
 pub mod application;
@@ -127,18 +128,18 @@ pub async fn initialize(
         tokio::spawn(fut);
     }
 
-    // Parse, populate cache and disallow later mutation
+    // Parse, populate cache and disallow later mutation.
     cli_args.second_parse()?;
     let cli_args = cli_args;
 
     info!("Starting neptune-core node on {}.", cli_args.network);
 
-    // Get data directory (wallet, block database), create one if none exists
+    // Get data directory (wallet, block database), create one if none exists.
     let data_directory = DataDirectory::get(cli_args.data_dir.clone(), cli_args.network)?;
     DataDirectory::create_dir_if_not_exists(&data_directory.root_dir_path()).await?;
     info!("Data directory is {}", data_directory);
 
-    // Initialize global state
+    // Initialize global state.
     let genesis = Block::genesis(cli_args.network);
     let global_state = GlobalState::try_new(
         data_directory.clone(),
@@ -517,10 +518,10 @@ pub(crate) fn log_tokio_lock_event_cb(lock_event: sync_tokio::LockEvent) {
     }
 }
 
-// notes:
-//   1. this feature is very verbose in the logs.
+// notes
+//   1. this feature is very verbose in the logs
 //   2. It's not really needed except when debugging lock acquisitions
-//   3. tracing-tests causes a big mem-leak for tests with this.
+//   3. tracing-tests causes a big mem-leak for tests with this
 #[cfg(feature = "log-lock_events")]
 pub(crate) fn log_tokio_lock_event(lock_event: &sync_tokio::LockEvent) {
     use std::ops::Sub;

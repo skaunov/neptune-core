@@ -42,10 +42,7 @@ impl LightState {
             tip: block,
             time_to_mine: None,
             network,
-        }
     }
-
-    /// A reference to the most canonical block seen on the network.
     pub fn tip(&self) -> &Block {
         &self.tip
     }

@@ -1,11 +1,10 @@
 //! implements an RPC server and client based on [tarpc]
 //!
-//! request and response data is json serialized.
+//! Request and response data is JSON-serialized.
 //!
-//! It is presently easiest to create a tarpc client in rust.
-//! To do so, one should add neptune-cash as a dependency and
-//! then do something like:
-//!
+//! It is presently easiest to create a `tarpc` client in Rust.
+//! To do so, one should add `neptune-cash` as a dependency and
+//! then do something like the following.
 //! ```no_run
 //! use anyhow::Result;
 //! use neptune_cash::application::rpc::server::RPCClient;
@@ -43,6 +42,7 @@
 //!
 //! Every RPC method returns an [RpcResult] which is wrapped inside a
 //! [tarpc::Response] by the rpc server.
+
 pub mod coinbase_output_readable;
 pub mod mempool_transaction_info;
 pub mod overview_data;
@@ -68,7 +68,9 @@ use systemstat::Platform;
 use systemstat::System;
 use tarpc::context;
 use tasm_lib::prelude::Tip5;
+use tasm_lib::triton_vm::proof::Claim;
 use tasm_lib::twenty_first::tip5::digest::Digest;
+use tokio::task::JoinSet;
 use tokio::sync::oneshot;
 use tracing::debug;
 use tracing::error;
@@ -77,8 +79,10 @@ use tracing::warn;
 
 use super::auth;
 use crate::api;
+use crate::api::export::Utxo;
 use crate::api::export::AnnouncementFlag;
 use crate::api::export::ConsolidationError;
+use crate::api::export::NeptuneProof;
 use crate::api::tx_initiation;
 use crate::api::tx_initiation::builder::input_selector::InputSelectionPolicy;
 use crate::api::tx_initiation::builder::tx_output_list_builder::OutputFormat;
@@ -116,6 +120,7 @@ use crate::protocol::peer::peer_info::PeerInfo;
 use crate::protocol::peer::InstanceId;
 use crate::protocol::peer::PeerStanding;
 use crate::protocol::proof_abstractions::timestamp::Timestamp;
+use crate::protocol::proof_abstractions::verifier::verify;
 use crate::state::claim_error::ClaimError;
 use crate::state::mining::mining_state::MAX_NUM_EXPORTED_BLOCK_PROPOSAL_STORED;
 use crate::state::transaction::transaction_details::TransactionDetails;
@@ -1886,7 +1891,7 @@ pub trait RPC {
     ///
     /// if the utxo has already been claimed, this call has no effect.
     ///
-    /// Return true if a new expected UTXO was added, otherwise false.
+    /// Return `true` if a new expected UTXO was added, otherwise `false`.
     ///
     /// ```no_run
     /// # use anyhow::Result;
@@ -1912,7 +1917,7 @@ pub trait RPC {
     /// # // load the cookie file from disk and assign it to a token
     /// # let token : auth::Token = auth::Cookie::try_load(&cookie_hint.data_directory).await?.into();
     /// #
-    /// // Encryted value of utxo transfer
+    /// // encryted value of utxo transfer
     /// let utxo_transfer_encrypted = "XXXXXXX".to_string();
     ///
     /// // max search depth is set to 3
@@ -2038,12 +2043,12 @@ pub trait RPC {
     /// [`RPC::set_coinbase_distribution()`].
     async fn unset_coinbase_distribution(token: auth::Token) -> RpcResult<()>;
 
-    /// mine a series of blocks to the node's wallet.
+    /// Mine a series of blocks to the node's wallet.
     ///
     /// Can be used only if the network uses mock blocks.
     /// (presently only the regtest network)
     ///
-    /// these blocks can be generated quickly because they do not have
+    /// These blocks can be generated quickly because they do not have
     /// a real ZK proof.  they have a witness "proof" and will validate correctly.
     /// witness proofs contain secrets that must not be shared, so this is
     /// allowed only on the regtest network, for development purposes.
@@ -2079,9 +2084,7 @@ pub trait RPC {
         block_proposal: Block,
     ) -> RpcResult<bool>;
 
-    /// mark MUTXOs as abandoned. Does not actually delete any elements in the
-    /// list.
-    ///
+    /// Mark MUTXOs as abandoned. Does not actually delete any elements in the list.
     /// ```no_run
     /// # use anyhow::Result;
     /// # use neptune_cash::application::rpc::server::RPCClient;
@@ -2119,7 +2122,6 @@ pub trait RPC {
     async fn set_tip(token: auth::Token, indicated_tip: Digest) -> RpcResult<()>;
 
     /// Gracious shutdown.
-    ///
     /// ```no_run
     /// # use anyhow::Result;
     /// # use neptune_cash::application::rpc::server::RPCClient;
@@ -2149,6 +2151,95 @@ pub trait RPC {
     /// # Ok(())
     /// # }
     async fn shutdown(token: auth::Token) -> RpcResult<bool>;
+
+    /// Prove a transfer of the native coin from the current wallet. Discloses
+    /// - the amount transferred,
+    /// - the sender's address,
+    /// - the receiver's address,
+    /// - hashed sender randomness to distinguish similar transfers,
+    /// - the AOCL of the block used for the argument.
+    /// Other info is hidden in the proof, such as the exact UTXO that were spent and the exact
+    /// block height at which the transfer was
+    /// confirmed. The native coin is indicated by the indices (`tx_ix` & `utxo_ix`) of the sent txs
+    /// in the current wallet; `block` is any which contains the transfer (the verifier must have this block
+    /// as canonical). *Probably you will want to pass `block` along a successfull result so that a verifier
+    /// won't need to search it by the AOCL digest from `Claim`.*
+    ///
+    /// The relevant data is taken from this node DB.
+    /// During verification from the same block the same data will be pulled.
+    ///
+    /// For verification see `triton_verify` in this API.
+    ///
+    /// On a failure expect `Auth` or `CreateProofError` variants of [`RpcError`], or `Failed` with the details.
+    ///
+    /// # details
+    /// the addresses are disclosed as the components constraining the address
+    ///
+    /// # example
+    /// ```no_run
+    /// # use anyhow::Result;
+    /// # use neptune_cash::application::rpc::server::RPCClient;
+    /// # use neptune_cash::application::rpc::auth;
+    /// # use tarpc::tokio_serde::formats::Json;
+    /// # use tarpc::serde_transport::tcp;
+    /// # use tarpc::client;
+    /// # use tarpc::context;
+    /// # use tasm_lib::twenty_first::tip5::digest::Digest;
+    /// #
+    /// # #[tokio::main]
+    /// # async fn main() -> Result<()>{
+    /// #
+    /// # // create a serde/json transport over tcp.
+    /// # let transport = tcp::connect("127.0.0.1:9799", Json::default).await?;
+    /// #
+    /// # // Create an RPC-client using the transport.
+    /// # let client = RPCClient::new(client::Config::default(), transport).spawn();
+    /// #
+    /// # // defines cookie hint
+    /// # let cookie_hint = client.cookie_hint(context::current()).await??;
+    /// #
+    /// # // load the cookie file from disk and assign it to a token
+    /// # let token : auth::Token = auth::Cookie::try_load(&cookie_hint.data_directory).await?.into();
+    /// #
+    /// // from the current wallet
+    /// // the index of the sent tx containing the transfer to prove
+    /// let tx_ix: u64 = 0xAAAAAAA;
+    /// // the index of the UTXO with that transfer inside this tx
+    /// let utxo_ix = 0xAA;
+    /// /* The digest of a block after spending (verifiers must check this block as canonical). For better privacy a recent block can be chosen, if the need is to show
+    /// when it was already took place --- choose a block by its timestamp accordingly, up to the block which first confirmed the tx (including). */
+    /// let block: Digest = Digest::try_from_hex("AAAAAAAA")?;
+    /// // get the claim and a proof
+    /// let (claim, proof) = client.prove_transfer(context::current(), token, tx_ix, utxo_ix, block).await??;
+    /// # Ok(())
+    /// # }
+    /// ```
+    async fn prove_transfer(
+        token: auth::Token,
+        tx_ix: u64,
+        utxo_ix: usize,
+        block: Digest,
+    ) -> RpcResult<(Claim, NeptuneProof)>;
+
+    async fn prove_reserves(
+        token: auth::Token,
+        // address: SendingAddress,
+        utxo_vec: Vec<Utxo>,
+        block: Digest,
+    ) -> RpcResult<Vec<(Claim, NeptuneProof)>>;
+
+    /// returns the indices of the false arguments (proofs)
+    async fn verify_batch_reserves(
+        token: auth::Token,
+        proofs: Vec<(Claim, NeptuneProof)>,
+    ) -> RpcResult<HashSet<Digest>>;
+    
+    /// Triton VM `verify`.
+    async fn triton_verify(
+        token: auth::Token,
+        claim: Claim,
+        proof: NeptuneProof,
+    ) -> RpcResult<bool>;
 }
 
 #[derive(Clone)]
@@ -2156,10 +2247,10 @@ pub(crate) struct NeptuneRPCServer {
     pub(crate) state: GlobalStateLock,
     pub(crate) rpc_server_to_main_tx: tokio::sync::mpsc::Sender<RPCServerToMain>,
 
-    // copy of DataDirectory for this neptune-core instance.
+    // Copy of `DataDirectory` for this `neptune-core` instance.
     data_directory: DataDirectory,
 
-    // list of tokens that are valid.  RPC clients must present a token that
+    // List of tokens that are valid.  RPC clients must present a token that
     // matches one of these.  there should only be one of each `Token` variant
     // in the list (dups ignored).
     valid_tokens: Vec<auth::Token>,
@@ -2256,17 +2347,8 @@ impl NeptuneRPCServer {
 
         if !proposal.has_proof_of_work(self.state.cli().network, &tip_header) {
             warn!("Got claimed PoW solution but PoW solution is not valid.");
-            return Ok(false);
+            Ok(false)
         }
-
-        // No time to waste! Inform main_loop!
-        let solution = Box::new(proposal);
-        let _ = self
-            .rpc_server_to_main_tx
-            .send(RPCServerToMain::ProofOfWorkSolution(solution))
-            .await;
-
-        Ok(true)
     }
 
     /// get the data_directory for this neptune-core instance
@@ -2298,7 +2380,7 @@ impl NeptuneRPCServer {
 }
 
 impl RPC for NeptuneRPCServer {
-    // documented in trait. do not add doc-comment.
+    // Documented in trait. Do not add doc-comment.
     async fn cookie_hint(self, _: context::Context) -> RpcResult<auth::CookieHint> {
         log_slow_scope!(fn_name!());
 
@@ -2312,14 +2394,14 @@ impl RPC for NeptuneRPCServer {
         }
     }
 
-    // documented in trait. do not add doc-comment.
+    // Documented in trait. Do not add doc-comment.
     async fn network(self, _: context::Context) -> RpcResult<Network> {
         log_slow_scope!(fn_name!());
 
         Ok(self.state.cli().network)
     }
 
-    // documented in trait. do not add doc-comment.
+    // Documented in trait. Do not add doc-comment.
     async fn own_listen_address_for_peers(
         self,
         _context: context::Context,
@@ -2333,7 +2415,7 @@ impl RPC for NeptuneRPCServer {
         Ok(listen_port.map(|port| SocketAddr::new(listen_for_peers_ip, port)))
     }
 
-    // documented in trait. do not add doc-comment.
+    // Documented in trait. Do not add doc-comment.
     async fn own_instance_id(
         self,
         _context: context::Context,
@@ -2345,7 +2427,7 @@ impl RPC for NeptuneRPCServer {
         Ok(self.state.lock_guard().await.net.instance_id)
     }
 
-    // documented in trait. do not add doc-comment.
+    // Documented in trait. Do not add doc-comment.
     async fn block_height(self, _: context::Context, token: auth::Token) -> RpcResult<BlockHeight> {
         log_slow_scope!(fn_name!());
         token.auth(&self.valid_tokens)?;
@@ -2713,7 +2795,7 @@ impl RPC for NeptuneRPCServer {
             .await)
     }
 
-    // documented in trait. do not add doc-comment.
+    // Documented in trait. Do not add doc-comment.
     async fn peer_info(self, _: context::Context, token: auth::Token) -> RpcResult<Vec<PeerInfo>> {
         log_slow_scope!(fn_name!());
         token.auth(&self.valid_tokens)?;
@@ -2729,7 +2811,7 @@ impl RPC for NeptuneRPCServer {
             .collect())
     }
 
-    // documented in trait. do not add doc-comment.
+    // Documented in trait. Do not add doc-comment.
     async fn all_punished_peers(
         self,
         _context: tarpc::context::Context,
@@ -2742,7 +2824,7 @@ impl RPC for NeptuneRPCServer {
 
         let global_state = self.state.lock_guard().await;
 
-        // Get all connected peers
+        // get all connected peers
         for peer_info in global_state.net.peer_map.values() {
             if peer_info.standing().is_negative() {
                 let maybe_ip = peer_info
@@ -2761,7 +2843,7 @@ impl RPC for NeptuneRPCServer {
 
         let sanctions_in_db = global_state.net.all_peer_sanctions_in_database();
 
-        // Combine result for currently connected peers and previously connected peers but
+        // combine result for currently connected peers and previously connected peers but
         // use result for currently connected peer if there is an overlap
         let mut all_sanctions = sanctions_in_memory;
         for (ip_addr, sanction) in sanctions_in_db {
@@ -2773,7 +2855,7 @@ impl RPC for NeptuneRPCServer {
         Ok(all_sanctions)
     }
 
-    // documented in trait. do not add doc-comment.
+    // Documented in trait. Do not add doc-comment.
     async fn validate_address(
         self,
         _ctx: context::Context,
@@ -3828,7 +3910,7 @@ impl RPC for NeptuneRPCServer {
         Ok(())
     }
 
-    // documented in trait. do not add doc-comment.
+    // Documented in trait. Do not add doc-comment.
     async fn mine_blocks_to_wallet(
         mut self,
         _context: tarpc::context::Context,
@@ -3838,16 +3920,15 @@ impl RPC for NeptuneRPCServer {
         log_slow_scope!(fn_name!());
         token.auth(&self.valid_tokens)?;
 
-        let include_mempool_txs = true;
-        Ok(self
-            .state
-            .api_mut()
-            .regtest_mut()
-            .mine_blocks_to_wallet(n_blocks, include_mempool_txs)
-            .await?)
+        let _ = self
+        .state
+        .api_mut()
+        .regtest_mut()
+        .mine_blocks_to_wallet(n_blocks, true).await?;
+        Ok(())
     }
 
-    // documented in trait. do not add doc-comment.
+    // Documented in trait. Do not add doc-comment.
     async fn provide_pow_solution(
         self,
         _context: tarpc::context::Context,
@@ -4604,7 +4685,7 @@ impl RPC for NeptuneRPCServer {
         Ok(mempool_transactions)
     }
 
-    // documented in trait. do not add doc-comment.
+    // Documented in trait. Do not add doc-comment.
     async fn mempool_tx_kernel(
         self,
         _context: ::tarpc::context::Context,
@@ -4623,9 +4704,91 @@ impl RPC for NeptuneRPCServer {
             .map(|tx| &tx.kernel)
             .cloned())
     }
+
+    // Documented in trait. Do not add doc-comment.
+    async fn prove_transfer(
+        self,
+        _context: ::tarpc::context::Context,
+        token: auth::Token,
+        tx_ix: u64,
+        utxo_ix: usize,
+        block: Digest,
+    ) -> RpcResult<(Claim, NeptuneProof)> {
+        log_slow_scope!(fn_name!());
+        token.auth(&self.valid_tokens)?;
+
+        crate::util_types::proof_of_transfer::helper(
+            self.state, tx_ix,
+            utxo_ix,
+            block,
+        ).await.map_err(RpcError::from)
+    }
+
+    async fn prove_reserves(
+        self,
+        _context: ::tarpc::context::Context,
+        token: auth::Token,
+        // address: SendingAddress,
+        utxo_vec: Vec<Utxo>,
+        block: Digest,
+    ) -> RpcResult<Vec<(Claim, NeptuneProof)>> {
+        log_slow_scope!(fn_name!());
+        token.auth(&self.valid_tokens)?;
+
+        Ok(self
+            .state
+            .api()
+            .wallet()
+            .prove_reserves(
+                // address, 
+                utxo_vec, block
+            )
+            .await?)
+    }
+    
+    async fn verify_batch_reserves(
+        self,
+        _context: ::tarpc::context::Context,
+        token: auth::Token,
+        proofs: Vec<(Claim, NeptuneProof)>,
+    ) -> RpcResult<HashSet<Digest>> {
+        log_slow_scope!(fn_name!());
+        token.auth(&self.valid_tokens)?;
+
+        let mut js = JoinSet::new();
+
+        proofs.into_iter()
+        // .enumerate()
+        .for_each(
+            // |(ix, (claim, proof))| 
+            |(claim, proof)| 
+            {js.spawn(async move {if verify(claim, proof, todo!["network"]).await {None} else {Some(todo!["claim.removal_record()"])}});}
+        );
+        Ok(js.join_all().await.into_iter().flatten().collect())
+    }
+
+    // Documented in trait. Do not add doc-comment.
+    async fn triton_verify(
+        self,
+        _context: ::tarpc::context::Context,
+        token: auth::Token,
+        claim: Claim,
+        proof: NeptuneProof,
+    ) -> RpcResult<bool> {
+        log_slow_scope!(fn_name!());
+        token.auth(&self.valid_tokens)?;
+
+        Ok(tasm_lib::triton_vm::verify(
+            Default::default(),
+            &claim,
+            &proof,
+        ))
+    }
 }
 
 pub mod error {
+    use crate::api::tx_initiation::error::CreateProofError;
+
     use super::*;
 
     /// enumerates possible rpc api errors
@@ -4649,6 +4812,9 @@ pub mod error {
 
         #[error("create transaction error: {0}")]
         CreateTxError(String),
+
+        #[error("create proof error: {0}")]
+        CreateProofError(String),
 
         #[error("upgrade proof error: {0}")]
         UpgradeProofError(String),
@@ -4694,11 +4860,19 @@ pub mod error {
 
         #[error("Derivation index must be in interval [{0}, {1}]")]
         InvalidDerivationIndexRange(u64, u64),
+        #[error("no canonical block with the given digest")]
+        NoSuchCanonicalBlock,
     }
 
     impl From<tx_initiation::error::CreateTxError> for RpcError {
         fn from(err: tx_initiation::error::CreateTxError) -> Self {
             RpcError::CreateTxError(err.to_string())
+        }
+    }
+
+    impl From<CreateProofError> for RpcError {
+        fn from(err: CreateProofError) -> Self {
+            RpcError::CreateProofError(err.to_string())
         }
     }
 
@@ -4732,8 +4906,8 @@ pub mod error {
         }
     }
 
-    // convert anyhow::Error to an RpcError::Failed.
-    // note that anyhow Error is not serializable.
+    // Convert `anyhow::Error` to an `RpcError::Failed`.
+    // Note that `anyhow` `Error` is not serializable.
     impl From<anyhow::Error> for RpcError {
         fn from(e: anyhow::Error) -> Self {
             Self::Failed(e.to_string())
@@ -4767,8 +4941,8 @@ mod tests {
     use crate::protocol::peer::NegativePeerSanction;
     use crate::protocol::peer::PeerSanction;
     use crate::protocol::proof_abstractions::mast_hash::MastHash;
-    use crate::state::wallet::address::generation_address::GenerationReceivingAddress;
-    use crate::state::wallet::address::generation_address::GenerationSpendingKey;
+    use crate::state::wallet::address::pokolen_address::PokolenReceivingAddress;
+    use crate::state::wallet::address::pokolen_address::PokolenSpendingKey;
     use crate::state::wallet::utxo_notification::UtxoNotificationMedium;
     use crate::state::wallet::wallet_entropy::WalletEntropy;
     use crate::tests::shared::blocks::invalid_block_with_transaction;
@@ -4929,7 +5103,7 @@ mod tests {
         let _ = rpc_server.clone().wallet_status(ctx, token).await;
         let own_receiving_address = rpc_server
             .clone()
-            .next_receiving_address(ctx, token, KeyType::Generation)
+            .next_receiving_address(ctx, token, KeyType::Pokolen)
             .await?;
         let _ = rpc_server.clone().mempool_tx_count(ctx, token).await;
         let _ = rpc_server.clone().mempool_size(ctx, token).await;
@@ -5199,7 +5373,7 @@ mod tests {
             "Devnet wallet on genesis block must have one spendable input (since timelock has passed)."
         );
 
-        let third_party_address = GenerationReceivingAddress::derive_from_seed(Default::default());
+        let third_party_address = PokolenReceivingAddress::derive_from_seed(Default::default());
         let inputs = rpc_server
             .clone()
             .select_spendable_inputs(
@@ -6028,7 +6202,7 @@ mod tests {
         let network = Network::Main;
         let ctx = context::current();
         let mut rng = rand::rng();
-        let address = GenerationSpendingKey::derive_from_seed(rng.random()).to_address();
+        let address = PokolenSpendingKey::derive_from_seed(rng.random()).to_address();
         let amount = NativeCurrencyAmount::coins(rng.random_range(0..10));
 
         // set flag on, verify non-initiation
@@ -6063,13 +6237,13 @@ mod tests {
         let network = Network::Main;
         let ctx = context::current();
         let mut rng = rand::rng();
-        let address0 = GenerationSpendingKey::derive_from_seed(rng.random()).to_address();
+        let address0 = PokolenSpendingKey::derive_from_seed(rng.random()).to_address();
         let output0 = CoinbaseOutputReadable::new(205, address0.to_bech32m(network).unwrap(), true);
 
-        let address1 = GenerationSpendingKey::derive_from_seed(rng.random()).to_address();
+        let address1 = PokolenSpendingKey::derive_from_seed(rng.random()).to_address();
         let output1 = CoinbaseOutputReadable::new(300, address1.to_bech32m(network).unwrap(), true);
 
-        let address2 = GenerationSpendingKey::derive_from_seed(rng.random()).to_address();
+        let address2 = PokolenSpendingKey::derive_from_seed(rng.random()).to_address();
         let output2 =
             CoinbaseOutputReadable::new(495, address2.to_bech32m(network).unwrap(), false);
 
@@ -6210,7 +6384,7 @@ mod tests {
         use crate::protocol::consensus::consensus_rule_set::ConsensusRuleSet;
         use crate::protocol::consensus::transaction::validity::neptune_proof::NeptuneProof;
         use crate::state::mining::block_proposal::BlockProposal;
-        use crate::state::wallet::address::generation_address::GenerationReceivingAddress;
+        use crate::state::wallet::address::pokolen_address::PokolenReceivingAddress;
         use crate::state::wallet::address::KeyType;
         use crate::tests::shared::blocks::fake_valid_deterministic_successor;
         use crate::tests::shared::blocks::invalid_empty_block;
@@ -6221,7 +6395,7 @@ mod tests {
             let genesis = Block::genesis(network);
             let mut block1 = invalid_empty_block(&genesis, network);
             let mut rng = StdRng::seed_from_u64(3409875378456);
-            let guesser_address = GenerationReceivingAddress::derive_from_seed(rng.random());
+            let guesser_address = PokolenReceivingAddress::derive_from_seed(rng.random());
             block1.set_header_guesser_address(guesser_address.into());
 
             let guess_challenge =
@@ -6288,7 +6462,7 @@ mod tests {
                 .lock_guard_mut()
                 .await
                 .wallet_state
-                .next_unused_spending_key(KeyType::Generation)
+                .next_unused_spending_key(KeyType::Pokolen)
                 .await
                 .to_address();
             let bob_token = cookie_token(&bob).await;
@@ -6373,7 +6547,7 @@ mod tests {
                     .lock_guard_mut()
                     .await
                     .wallet_state
-                    .next_unused_spending_key(KeyType::Generation)
+                    .next_unused_spending_key(KeyType::Pokolen)
                     .await
                     .to_address();
                 addresses.push(address);
@@ -6601,7 +6775,7 @@ mod tests {
 
                     let receiving_address_generation = rpc_server
                         .clone()
-                        .next_receiving_address(context::current(), token, KeyType::Generation)
+                        .next_receiving_address(context::current(), token, KeyType::Pokolen)
                         .await?;
                     let receiving_address_symmetric = rpc_server
                         .clone()
@@ -6649,7 +6823,7 @@ mod tests {
 
                     // Mine block 1 to get some coins
 
-                    let cb_key = wallet_entropy.nth_generation_spending_key(0);
+                    let cb_key = wallet_entropy.nth_forthegeneration_spending_key(0);
                     let (block1, composer_expected_utxos) =
                         make_mock_block(&genesis_block, None, cb_key, Default::default(), network)
                             .await;
@@ -6797,7 +6971,7 @@ mod tests {
                 let mut bob = test_rpc_server(bob_wallet.clone(), 2, cli_args).await;
                 let bob_token = cookie_token(&bob).await;
 
-                let bob_key = bob_wallet.nth_generation_spending_key(0);
+                let bob_key = bob_wallet.nth_forthegeneration_spending_key(0);
                 let genesis_block = Block::genesis(network);
                 let (block1, composer_expected_utxos) =
                     make_mock_block(&genesis_block, None, bob_key, Default::default(), network)
@@ -6810,7 +6984,7 @@ mod tests {
 
                 let bob_gen_addr = bob
                     .clone()
-                    .next_receiving_address(context::current(), bob_token, KeyType::Generation)
+                    .next_receiving_address(context::current(), bob_token, KeyType::Pokolen)
                     .await?;
                 let bob_sym_addr = bob
                     .clone()
@@ -6884,7 +7058,7 @@ mod tests {
                     if spent {
                         // Send entire liquid balance somewhere else
                         let another_address = WalletEntropy::new_random()
-                            .nth_generation_spending_key(0)
+                            .nth_forthegeneration_spending_key(0)
                             .to_address();
                         let output: OutputFormat = (
                             another_address.into(),
@@ -7010,7 +7184,7 @@ mod tests {
             // let timestamp = network.launch_date() + Timestamp::days(1);
             let own_address = rpc_server
                 .clone()
-                .next_receiving_address(ctx, token, KeyType::Generation)
+                .next_receiving_address(ctx, token, KeyType::Pokolen)
                 .await
                 .unwrap();
             let elem: OutputFormat = (
@@ -7073,7 +7247,7 @@ mod tests {
             mine_block_to_wallet_invalid_block_proof(&mut rpc_server.state, Some(timestamp))
                 .await?;
 
-            let address: ReceivingAddress = GenerationSpendingKey::derive_from_seed(rng.random())
+            let address: ReceivingAddress = PokolenSpendingKey::derive_from_seed(rng.random())
                 .to_address()
                 .into();
             let amount = NativeCurrencyAmount::coins(rng.random_range(0..2));
@@ -7112,7 +7286,7 @@ mod tests {
         mod worker {
             use super::*;
             use crate::state::wallet::address::elliptic_curve_hybrid::EcHybridKey;
-            use crate::state::wallet::address::generation_address::GenerationReceivingAddress;
+            use crate::state::wallet::address::pokolen_address::PokolenReceivingAddress;
             use crate::state::wallet::address::symmetric_key::SymmetricKey;
             use crate::state::wallet::address::viewing_address::ViewingAddressKey;
             use crate::state::wallet::address::SpendingKey;
@@ -7157,10 +7331,10 @@ mod tests {
                     .lock_guard_mut()
                     .await
                     .wallet_state
-                    .next_unused_spending_key(KeyType::Generation)
+                    .next_unused_spending_key(KeyType::Pokolen)
                     .await;
 
-                let SpendingKey::Generation(key) = wallet_spending_key else {
+                let SpendingKey::ForTheGeneration(key) = wallet_spending_key else {
                     // todo: make_mock_block should accept a SpendingKey.
                     panic!("must be generation key");
                 };
@@ -7204,8 +7378,8 @@ mod tests {
                 // --- Setup. generate an output that our wallet cannot claim. ---
                 let key_seed: Digest = rng.random();
                 let external_receiving_address: ReceivingAddress = match recipient_key_type {
-                    KeyType::Generation => {
-                        GenerationReceivingAddress::derive_from_seed(key_seed).into()
+                    KeyType::Pokolen => {
+                        PokolenReceivingAddress::derive_from_seed(key_seed).into()
                     }
                     KeyType::Symmetric => SymmetricKey::from_seed(key_seed).into(),
                     KeyType::EcHybrid => EcHybridKey::from_seed(key_seed).to_address().into(),

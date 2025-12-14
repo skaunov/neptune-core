@@ -8,7 +8,7 @@ use super::address::KeyType;
 use super::address::SpendingKey;
 use super::utxo_notification::UtxoNotificationMedium;
 
-/// specifies how to handle change for a transaction.
+/// specifies how to handle change for a transaction
 ///
 /// When the selected inputs represent more coins than the outputs (with fee)
 /// where does this change go?
@@ -20,17 +20,13 @@ pub enum ChangePolicy {
     /// Inputs must exactly equal spend amount, or else an error will result.
     ExactChange,
 
-    /// recover change to the next unused key.
-    ///
-    /// (of specified key-type, via specified notification medium)
+    /// recover change to the next unused key (of specified key-type, via specified notification medium)
     RecoverToNextUnusedKey {
         key_type: KeyType,
         medium: UtxoNotificationMedium,
     },
 
-    /// recover change to the provided key.
-    ///
-    /// (via specified notification medium)
+    /// recover change to the provided key (via specified notification medium)
     RecoverToProvidedKey {
         key: Arc<SpendingKey>,
         medium: UtxoNotificationMedium,

@@ -13,15 +13,15 @@ use crate::protocol::consensus::transaction::utxo::Coin;
 use crate::protocol::proof_abstractions::tasm::program::TritonProgram;
 
 pub(crate) fn match_type_script_and_generate_witness(
-    type_script_hash: Digest,
+    typescript: Digest,
     transaction_kernel: TransactionKernel,
     salted_input_utxos: SaltedUtxos,
     salted_output_utxos: SaltedUtxos,
 ) -> Option<TypeScriptAndWitness> {
-    let type_script_and_witness = if type_script_hash == NativeCurrency.hash() {
+    let type_script_and_witness = if typescript == NativeCurrency.hash() {
         NativeCurrencyWitness::new(transaction_kernel, salted_input_utxos, salted_output_utxos)
             .type_script_and_witness()
-    } else if type_script_hash == TimeLock.hash() {
+    } else if typescript == TimeLock.hash() {
         TimeLockWitness::new(transaction_kernel, salted_input_utxos, salted_output_utxos)
             .type_script_and_witness()
     } else {

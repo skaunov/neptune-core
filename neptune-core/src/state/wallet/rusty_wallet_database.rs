@@ -473,11 +473,11 @@ impl RustyWalletDatabase {
         self.tables.counter.set(counter).await;
     }
 
-    pub fn get_generation_key_counter(&self) -> u64 {
+    pub fn get_forthegeneration_key_counter(&self) -> u64 {
         self.tables.generation_key_counter.get()
     }
 
-    pub async fn set_generation_key_counter(&mut self, counter: u64) {
+    pub async fn set_forthegeneration_key_counter(&mut self, counter: u64) {
         self.tables.generation_key_counter.set(counter).await;
     }
 

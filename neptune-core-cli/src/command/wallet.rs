@@ -153,8 +153,7 @@ pub(crate) enum WalletCommand {
         derivation_index: u64,
     },
 
-    /// Given a receiving address derived from this wallet's seed, find the
-    /// associated derivation index.
+    /// Given a receiving address derived from this wallet's seed, find the associated derivation index.
     ///
     /// This command does not require a connection to neptune-core; it reads the
     /// wallet directly. Also, this command iterates until a match is found;

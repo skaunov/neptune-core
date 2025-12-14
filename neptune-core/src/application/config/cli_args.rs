@@ -169,7 +169,7 @@ pub struct Args {
     ///
     /// If this flag is set, whenever there are four or more UTXOs managed by
     /// the wallet, the client will initiate and broadcast a transaction that
-    /// sends UTXOs to either the next unused symmetric key, or else the given
+    /// spends them to either the next unused symmetric key, or else the given
     /// address.
     ///
     /// Examples:
@@ -712,12 +712,12 @@ pub struct Args {
     /// WARNING: Enabling this exposes dangerous RPC behavior and should only be used in
     /// isolated, controlled environments.
     ///
-    /// This may result in:
+    /// this may result in
     /// - Denial of Service (DoS) by triggering heavy or expensive computations.
     /// - Exposure of internal node state or metrics that could aid an attacker.
     /// - Misconfigurations leading to unexpected or unsafe behavior.
     #[clap(long)]
-    pub unsafe_rpc: bool,
+    pub rpc_isnot_controlled: bool,
 }
 
 impl Default for Args {

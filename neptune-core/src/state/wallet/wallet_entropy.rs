@@ -15,7 +15,7 @@ use super::address::ReceivingAddress;
 use crate::api::export::KeyType;
 use crate::protocol::consensus::block::block_height::BlockHeight;
 use crate::state::wallet::address::elliptic_curve_hybrid;
-use crate::state::wallet::address::generation_address;
+use crate::state::wallet::address::pokolen_address;
 use crate::state::wallet::address::symmetric_key;
 use crate::state::wallet::address::viewing_address;
 use crate::state::wallet::secret_key_material::SecretKeyMaterial;
@@ -48,14 +48,14 @@ impl WalletEntropy {
     }
 
     /// Returns the spending key for guesser rewards.
-    pub fn guesser_fee_key(&self) -> generation_address::GenerationSpendingKey {
+    pub fn guesser_fee_key(&self) -> pokolen_address::PokolenSpendingKey {
         self.composer_fee_key()
     }
 
     /// Returns the spending key for prover rewards, *i.e.*, composer fee or
     /// proof-upgrader (gobbling) fee.
-    pub fn composer_fee_key(&self) -> generation_address::GenerationSpendingKey {
-        self.nth_generation_spending_key(0u64)
+    pub fn composer_fee_key(&self) -> pokolen_address::PokolenSpendingKey {
+        self.nth_forthegeneration_spending_key(0u64)
     }
 
     /// Returns the receiving address for prover rewards, *i.e.*, composer fee
@@ -67,8 +67,8 @@ impl WalletEntropy {
     /// Derives the nth receiving address for the given key type.
     pub fn nth_receiving_address(&self, index: u64, key_type: KeyType) -> ReceivingAddress {
         match key_type {
-            KeyType::Generation => {
-                ReceivingAddress::from(self.nth_generation_spending_key(index).to_address())
+            KeyType::Pokolen => {
+                ReceivingAddress::from(self.nth_forthegeneration_spending_key(index).to_address())
             }
             KeyType::Symmetric => ReceivingAddress::from(self.nth_symmetric_key(index)),
             KeyType::EcHybrid => ReceivingAddress::from(self.nth_ec_hybrid_key(index).to_address()),
@@ -84,20 +84,20 @@ impl WalletEntropy {
     // requesting a new key for purposes of a new wallet receiving address,
     // callers should use [wallet_state::WalletState::next_unused_spending_key()]
     // which takes &mut self.
-    pub fn nth_generation_spending_key(
+    pub fn nth_forthegeneration_spending_key(
         &self,
         index: u64,
-    ) -> generation_address::GenerationSpendingKey {
+    ) -> pokolen_address::PokolenSpendingKey {
         // We keep n between 0 and 2^16 as this makes it possible to scan all possible addresses
         // in case you don't know with what counter you made the address
         let key_seed = Tip5::hash_varlen(
             &[
                 self.secret_seed.0.encode(),
-                bfe_vec![generation_address::GENERATION_FLAG, index],
+                bfe_vec![pokolen_address::POKOLEN_FLAG, index],
             ]
             .concat(),
         );
-        generation_address::GenerationSpendingKey::derive_from_seed(key_seed)
+        pokolen_address::PokolenSpendingKey::derive_from_seed(key_seed)
     }
 
     /// derives a symmetric key at `index`
@@ -173,8 +173,8 @@ impl WalletEntropy {
     pub fn nth_generation_spending_key_for_tests(
         &self,
         counter: u64,
-    ) -> generation_address::GenerationSpendingKey {
-        self.nth_generation_spending_key(counter)
+    ) -> pokolen_address::PokolenSpendingKey {
+        self.nth_forthegeneration_spending_key(counter)
     }
 
     // note: legacy tests were written to call nth_symmetric_key()

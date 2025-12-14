@@ -18,7 +18,7 @@ pub mod verifier;
 /// Phrased differently, after proving the matching `TritonProgram`, the
 /// `SecretWitness` should be securely deleted.
 pub trait SecretWitness {
-    /// The program's (public/standard) input
+    /// the program's (public/standard) input
     fn standard_input(&self) -> PublicInput;
 
     /// The program's (public/standard) output.

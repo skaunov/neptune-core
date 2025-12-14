@@ -42,8 +42,8 @@ where
 
     /// The [program](Self::program)'s hash [digest](Digest).
     //
-    // note: we do not provide a default impl because implementors should cache
-    // their Digest with OnceLock.
+    // Note: we do not provide a default `impl` because implementors should cache
+    // their `Digest` with `OnceLock`.
     fn hash(&self) -> Digest;
 
     /// Run the program and generate a proof for it, assuming running halts
@@ -80,7 +80,7 @@ where
 /// Run the program and generate a proof for it, assuming the Triton VM run
 /// halts gracefully.
 ///
-/// Please do not call this directly.  Use TransactionProofBuilder instead
+/// Please do not call this directly.  Use `TransactionProofBuilder` instead
 /// which includes logic for building mock proofs if necessary.
 ///
 /// If we are in a test environment, try reading it from disk. If it is not
@@ -98,72 +98,61 @@ pub(crate) async fn prove_triton_program(
     triton_vm_job_queue: Arc<TritonVmJobQueue>,
     proof_job_options: TritonVmProofJobOptions,
 ) -> Result<Proof, CreateProofError> {
-    // regtest mode: just return a mock (empty) Proof
+    // regtest mode: just return a mock (empty) `Proof`
     if proof_job_options.job_settings.network.use_mock_proof() {
-        return Ok(Proof::valid_mock());
+        Ok(Proof::valid_mock())
     }
 
-    // create a triton-vm-job-queue job for generating this proof.
-    let job = ProverJob::new(
-        program,
-        claim,
-        nondeterminism,
-        proof_job_options.job_settings,
-    );
+        // Queue the job and obtain a job handle.
+        let job_handle = triton_vm_job_queue.add_job(job, proof_job_options.job_priority)?;
+        tokio::pin!(job_handle);
 
-    // queue the job and obtain a job handle.
-    let job_handle = triton_vm_job_queue.add_job(job, proof_job_options.job_priority)?;
-    tokio::pin!(job_handle);
+        let completion = match proof_job_options.cancel_job_rx {
+            /* Fix for issue #348.
+            if we have a cancellation channel from caller then we select on
+            both the channel and job.  If we get a cancel request from the
+            caller, or the channel closes, then we cancel the job
+            which removes it from the job-queue. */
+            Some(mut cancel_job_rx) => {
+                tokio::select! {
+                    // Case: job completion.
+                    completion = &mut job_handle => completion?,
 
-    let completion = match proof_job_options.cancel_job_rx {
-        // fix for issue #348.
-        // if we have a cancellation channel from caller then we select on
-        // both the channel and job.  If we get a cancel request from the
-        // caller, or the channel closes, then we cancel the job
-        // which removes it from the job-queue.
-        Some(mut cancel_job_rx) => {
-            tokio::select! {
-                // case: job completion.
-                completion = &mut job_handle => completion?,
-
-                // case: sender cancelled, or sender dropped.
-                _ = cancel_job_rx.changed() => {
-                    debug!("received cancellation request for job: {}.  cancelling.", job_handle.job_id());
-                    job_handle.cancel()?;
-                    job_handle.await?
+                    // Case: sender cancelled, or sender dropped.
+                    _ = cancel_job_rx.changed() => {
+                        debug!("received cancellation request for job: {}.  cancelling.", job_handle.job_id());
+                        job_handle.cancel()?;
+                        job_handle.await?
+                    }
                 }
             }
-        }
-        None => job_handle.await?,
-    };
+            None => job_handle.await?,
+        };
 
-    // obtain resulting proof.
-    Ok(ProverJobResult::try_from(completion)?.into_inner()?)
+        // Obtain resulting proof.
+        Ok(ProverJobResult::try_from(completion)?.into_inner()?)
+    }
 }
 
-/// Options for executing the triton-vm proving job
+/// options for executing the `triton-vm` proving job
 #[derive(Clone, Debug)]
 #[cfg_attr(test, derive(Default))]
 pub struct TritonVmProofJobOptions {
     /// priority of this job in the job-queue
     ///
-    /// used when selecting the next job to run.
+    /// Used when selecting the next job to run.
     ///
-    /// note that if a lower priority job is already running then a higher
+    /// Note that if a lower priority job is already running then a higher
     /// priority job still must wait for it to complete.
     pub job_priority: TritonVmJobPriority,
 
     /// job-specific settings
     pub job_settings: ProverJobSettings,
 
-    /// Cancellation:
-    ///
-    /// It is possible to cancel a proving-job by:
-    ///
+    /// :Cancellation: It is possible to cancel a proving-job by:
     /// 1. create a [tokio::sync::watch] channel and set the receiver in the
-    ///    `cancel_job_rx` field.
-    ///
-    /// 2. call send() on the channel sender to cancel the job.
+    ///    `cancel_job_rx` field,
+    /// 2. call `send()` on the channel sender to cancel the job.
     pub cancel_job_rx: Option<tokio::sync::watch::Receiver<()>>,
 }
 
@@ -302,6 +291,7 @@ pub mod tests {
 
     use itertools::Itertools;
     use macro_rules_attr::apply;
+    use proptest::test_runner::TestCaseResult;
     use tasm_lib::triton_vm;
     use tracing::debug;
 
@@ -309,6 +299,8 @@ pub mod tests {
     use crate::api::export::Network;
     use crate::application::config::triton_vm_env_vars::TritonVmEnvVars;
     use crate::protocol::consensus::transaction::transaction_proof::TransactionProofType;
+    use crate::protocol::proof_abstractions::tasm::environment;
+    use crate::protocol::proof_abstractions::SecretWitness;
     use crate::state::transaction::tx_proving_capability::TxProvingCapability;
     use crate::tests::shared::files::headers_for_proof_server_request;
     use crate::tests::shared::files::load_test_proof_servers;
@@ -361,6 +353,159 @@ pub mod tests {
                 },
                 cancel_job_rx: None,
             }
+        }
+    }
+
+    pub trait TritonProgramSpecification: TritonProgram {
+        /// The canonical reference source code for the Triton program, written
+        /// in the subset of rust that the tasm-lang compiler understands. To run this program, call [`Self::run_rust`], which spawns a new
+        /// thread, boots the environment, and executes the program.
+        fn source(&self);
+
+        /// Run the source program natively in Rust, but with the emulated TritonVM
+        /// environment for input, output, nondeterminism, and program digest.
+        fn run_rust(
+            &self,
+            input: &PublicInput,
+            nondeterminism: NonDeterminism,
+        ) -> Result<Vec<BFieldElement>, TritonError> {
+            debug!(
+                "Running triton program with input: {}",
+                input.individual_tokens.iter().map(|b| b.value()).join(",")
+            );
+            let program_digest = catch_unwind(|| self.hash()).unwrap_or_default();
+            let emulation_result = catch_unwind(|| {
+                environment::init(program_digest, &input.individual_tokens, nondeterminism);
+                self.source();
+                environment::audit_end_state();
+                environment::PUB_OUTPUT.take()
+            });
+
+            emulation_result.map_err(|e| TritonError::RustShadowPanic(format!("{e:?}")))
+        }
+
+        /// Use Triton VM to run the tasm code.
+        ///
+        /// Only used in tests, since in production, you always need the proofs.
+        fn run_tasm(
+            &self,
+            input: &PublicInput,
+            nondeterminism: NonDeterminism,
+        ) -> Result<Vec<BFieldElement>, TritonError> {
+            let mut vm_state = VMState::new(self.program(), input.clone(), nondeterminism.clone());
+            tasm_lib::maybe_write_debuggable_vm_state_to_disk(&vm_state);
+
+            let init_stack = vm_state.op_stack.clone();
+            if let Err(err) = vm_state.run() {
+                let err_str = format!("Triton VM failed.\nError: {err}\nVMState:\n{vm_state}");
+                eprintln!("{err_str}");
+                return Err(TritonError::TritonVMPanic(err_str, err));
+            }
+
+            /* Do some sanity checks that are likely to catch programming
+            errors in the Triton program. This doesn't catch
+            soundness errors, though, since a valid proof could still be
+            generated even though one of these checks fail. */
+            assert!(
+                vm_state.secret_digests.is_empty(),
+                "Secret digest list must be empty after executing Triton program"
+            );
+            assert!(
+                vm_state.secret_individual_tokens.is_empty(),
+                "Secret token list must be empty after executing Triton program"
+            );
+            assert!(
+                vm_state.public_input.is_empty(),
+                "input must be empty after executing Triton program"
+            );
+            assert_eq!(&init_stack, &vm_state.op_stack);
+
+            Ok(vm_state.public_output)
+        }
+
+        /// `Ok(())` iff the given input & non-determinism triggers the failure of
+        /// either the instruction `assert` or `assert_vector`, and if that
+        /// instruction's error id is one of the expected error ids.
+        fn test_assertion_failure(
+            &self,
+            public_input: PublicInput,
+            non_determinism: NonDeterminism,
+            expected_error_ids: &[i128],
+        ) -> TestCaseResult {
+            let fail =
+                |reason: String| Err(proptest::test_runner::TestCaseError::Fail(reason.into()));
+
+            let tasm_result = self.run_tasm(&public_input, non_determinism.clone());
+            let Err(TritonError::TritonVMPanic(_, err)) = tasm_result else {
+                return fail("expected a failure in Triton VM, but it halted gracefully".into());
+            };
+
+            let (InstructionError::AssertionFailed(err)
+            | InstructionError::VectorAssertionFailed(_, err)) = err
+            else {
+                return fail(format!("expected an assertion failure, but got: {err}"));
+            };
+
+            let ids_str = expected_error_ids.iter().join(", ");
+            let expected_ids_str = format!("expected an error ID in {{{ids_str}}}");
+            let Some(err_id) = err.id else {
+                return fail(format!("{expected_ids_str}, but found none"));
+            };
+
+            proptest::prop_assert!(
+                expected_error_ids.contains(&err_id),
+                "{expected_ids_str}, but found {err_id}",
+            );
+
+            let rust_result = self.run_rust(&public_input, non_determinism.clone());
+            let Err(TritonError::RustShadowPanic(_)) = rust_result else {
+                return fail("rust shadowing must fail, but did not".into());
+            };
+
+            Ok(())
+        }
+
+        /// TODO might be a good idea to return one `Vec` and assert both results are the same
+        fn assert_both_rust_tasm_returns_the_output(
+            &self,
+            // p: impl ConsensusProgramSpecification,
+            /* TODO this should be the associated type actually, but probably even
+            for the bigger trait */
+            sw: &impl SecretWitness,
+        ) {
+            let o = sw.output();
+            let rust = self.run_rust(&sw.standard_input(), sw.nondeterminism());
+            assert![rust.is_ok(), "{:?}", rust.unwrap_err()];
+            let rust = rust.unwrap();
+            assert!(
+                &o.eq(&rust),
+                "Rust output was different\n{rust:?}|run output\n{o:?}|claim output"
+            );
+            // prop_assert_eq!(&o, &rust, "Rust output was different\n{rust}|run output\n{o}|claim output\n{}|claim output original", sw.output());
+
+            let t = self
+                .run_tasm(&sw.standard_input(), sw.nondeterminism())
+                .unwrap_or_else(|e| match e {
+                    TritonError::RustShadowPanic(rsp) => {
+                        panic!("Tasm run failed due to rust shadow panic (?): {rsp}");
+                    }
+                    TritonError::TritonVMPanic(err, instruction_error) => {
+                        panic!("Tasm run failed due to VM panic: {instruction_error}:\n{err}");
+                    }
+                });
+            assert!(
+                &o.eq(&t),
+                "Triton output was different\n{t:?}|run output\n{o:?}|claim output"
+            )
+        }
+
+        fn assert_rust_and_tasm_fail(&self, sw: impl SecretWitness, expected_error_ids: &[i128]) {
+            self.test_assertion_failure(
+                sw.standard_input(),
+                sw.nondeterminism(),
+                expected_error_ids,
+            )
+            .unwrap()
         }
     }
 
@@ -587,17 +732,18 @@ pub mod tests {
         proof
     }
 
-    /// Store a proof to the given file
+    /// Store a proof to the given file.
     fn save_proof(path: &PathBuf, proof: &Proof) {
-        let proof_data = proof
-            .0
-            .iter()
-            .copied()
-            .flat_map(|b| b.value().to_be_bytes().to_vec())
-            .collect_vec();
-        let mut output_file = File::create(path).expect("cannot open file for writing");
-        output_file
-            .write_all(&proof_data)
+        File::create(path)
+            .expect("cannot open file for writing")
+            .write_all(
+                &proof
+                    .0
+                    .iter()
+                    .copied()
+                    .flat_map(|b| b.value().to_be_bytes())
+                    .collect_vec(),
+            )
             .expect("cannot write to file");
     }
 

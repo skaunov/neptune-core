@@ -36,7 +36,7 @@ mod resync_membership_proofs {
                 .block_on(
                     rt.block_on(global_state_lock.lock_guard_mut())
                         .wallet_state
-                        .next_unused_spending_key(KeyType::Generation),
+                        .next_unused_spending_key(KeyType::Pokolen),
                 )
                 .to_address();
 
@@ -134,7 +134,7 @@ mod maintain_membership_proofs {
                 .block_on(
                     global_state
                         .wallet_state
-                        .next_unused_spending_key(KeyType::Generation),
+                        .next_unused_spending_key(KeyType::Pokolen),
                 )
                 .to_address();
             let block1_time = Network::Main.launch_date() + Timestamp::months(7);

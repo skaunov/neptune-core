@@ -26,9 +26,8 @@ type ChunkIndex = u64;
 #[cfg_attr(any(test, feature = "arbitrary-impls"), derive(Arbitrary))]
 pub struct ChunkDictionary {
     /// {chunk index => (MMR membership proof for the whole chunk to which index belongs, chunk value)}
-    /// This list is always sorted. It has max. NUM_TRIALS=45 elements, so we
-    /// don't care about the cost of reallocation when `insert`ing or
-    /// `remove`ing.
+    /// This list is always sorted. It has max. `NUM_TRIALS=45` elements, so we
+    /// don't care about the cost of reallocation when `insert` or `remove`.
     pub(crate) dictionary: Vec<(u64, (MmrMembershipProof, Chunk))>,
 }
 

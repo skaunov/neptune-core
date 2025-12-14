@@ -1,5 +1,6 @@
 use std::sync::OnceLock;
 
+#[cfg(any(test, feature = "arbitrary-impls"))]
 use get_size2::GetSize;
 use serde::Deserialize;
 use serde::Serialize;
@@ -11,7 +12,8 @@ use crate::protocol::consensus::block::Block;
 use crate::protocol::proof_abstractions::tasm::program::TritonProgram;
 use crate::protocol::proof_abstractions::SecretWitness;
 
-#[derive(Debug, Clone, BFieldCodec, GetSize, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, BFieldCodec, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "arbitrary-impls"), derive(GetSize))]
 pub struct PredecessorIsValidWitness {
     pub predecessor_block: Block,
 }
@@ -30,7 +32,8 @@ impl SecretWitness for PredecessorIsValidWitness {
     }
 }
 
-#[derive(Debug, Clone, BFieldCodec, GetSize, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, BFieldCodec, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "arbitrary-impls"), derive(GetSize))]
 pub struct PredecessorIsValid {
     pub witness: PredecessorIsValidWitness,
 }
@@ -51,7 +54,7 @@ impl TritonProgram for PredecessorIsValid {
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;
-    use crate::protocol::proof_abstractions::tasm::program::spec::TritonProgramSpecification;
+    use crate::protocol::proof_abstractions::tasm::program::tests::TritonProgramSpecification;
 
     impl TritonProgramSpecification for PredecessorIsValid {
         fn source(&self) {

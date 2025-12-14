@@ -366,17 +366,15 @@ pub(crate) mod tests {
                                 .unwrap(),
                         );
                         let lock_scripts_and_witnesses = hash_lock_keys
-                            .iter()
-                            .copied()
-                            .map(LockScriptAndWitness::standard_hash_lock_from_preimage)
-                            .collect_vec();
+                        .iter()
+                        .copied()
+                        .map(LockScriptAndWitness::standard_hash_lock_from_preimage).collect_vec();
                         let input_utxos = input_amounts
-                            .into_iter()
-                            .zip(lock_scripts_and_witnesses.iter())
-                            .map(|(amount, ls_and_w)| {
-                                Utxo::new(ls_and_w.program.hash(), amount.to_native_coins())
-                            })
-                            .collect_vec();
+                        .into_iter()
+                        .zip(lock_scripts_and_witnesses.iter())
+                        .map(|(amount, ls_and_w)| Utxo::new(
+                            ls_and_w.program.hash(), amount.to_native_coins()
+                        )).collect_vec();
                         let own_items = input_utxos.iter().map(Tip5::hash).collect_vec();
                         let removables = izip!(
                             own_items.iter().copied(),

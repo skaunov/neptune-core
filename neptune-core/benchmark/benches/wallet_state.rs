@@ -21,7 +21,7 @@ mod wallet_state {
     async fn next_block(global_state: &mut GlobalState, num_outputs_in_tx: usize) -> Block {
         let own_address = global_state
             .wallet_state
-            .next_unused_spending_key(KeyType::Generation)
+            .next_unused_spending_key(KeyType::Pokolen)
             .await
             .to_address();
         let prev = global_state.chain.tip().to_owned();

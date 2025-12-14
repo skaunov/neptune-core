@@ -47,6 +47,7 @@ use crate::protocol::consensus::block::mutator_set_update::MutatorSetUpdate;
 use crate::protocol::consensus::block::Block;
 use crate::protocol::consensus::block::INITIAL_BLOCK_SUBSIDY;
 use crate::protocol::consensus::block::PREMINE_MAX_SIZE;
+use crate::protocol::consensus::transaction::lock_script::DigestLockScript;
 use crate::protocol::consensus::transaction::lock_script::LockScript;
 use crate::protocol::consensus::transaction::transaction_kernel::TransactionKernelProxy;
 use crate::protocol::proof_abstractions::verifier::cache_true_claims;
@@ -1364,12 +1365,8 @@ impl ArchivalState {
         )))
     }
 
-    /// Return the canonical block with the given height. None if no height of
-    /// this block is known yet.
-    pub(crate) async fn canonical_block_by_height(
-        &self,
-        block_height: BlockHeight,
-    ) -> Option<Block> {
+    /// Return the canonical block with the given height. None if no height of this block is known yet.
+    async fn canonical_block_by_height(&self, block_height: BlockHeight) -> Option<Block> {
         let block_hash = self
             .archival_block_mmr
             .ammr()
@@ -1999,10 +1996,16 @@ impl ArchivalState {
             }
 
             // Remove items, thus removing the input UTXOs from the mutator set
-            self.archival_mutator_set
-                .ams_mut()
-                .batch_remove(removals)
-                .await;
+            while let Some(removal_record) = removals_mutable.pop() {
+                // Batch-update all removal records to keep them valid after next removal
+                RemovalRecord::batch_update_from_remove(&mut removals_mutable, removal_record);
+
+                // Remove the element from the mutator set
+                self.archival_mutator_set
+                    .ams_mut()
+                    .remove(removal_record)
+                    .await;
+            }
         }
 
         // Sanity check that archival mutator set has been updated consistently with the new block
@@ -2125,30 +2128,22 @@ impl ArchivalState {
             lock_script_hash,
             sender_randomness,
             receiver_digest,
-        ) in Self::known_burns()
-        {
-            // Verify that lock script hash is that of burn lock script or that
-            // receiver digest is all-zeros (either suffices).
-            if receiver_digest != Digest::new(bfe_array![0;5])
-                && lock_script_hash != LockScript::burn().hash()
-            {
+        ) in Self::known_burns() {
+            // Verify that lock script hash is that of burn lock script or that receiver digest is all-zeros (either suffices).
+            if receiver_digest != Digest::new(bfe_array![0;5]) && lock_script_hash != LockScript::burn().hash() {
                 debug!(
                     "Burn {}/{} could not be validated because the receiver \
                     digest =/= (0,0,0,0,0) and the lock script hash does not \
                     agree with the burn lock script.",
                     block_height, output_index
                 );
-                continue;
+                continue
             }
 
             // Get block.
             let candidate_block_digests = self.block_height_to_block_digests(block_height).await;
             let mut canonical_block_digest = Digest::default();
-            for candidate_block_digest in candidate_block_digests {
-                if self
-                    .block_belongs_to_canonical_chain(candidate_block_digest)
                     .await
-                {
                     canonical_block_digest = candidate_block_digest;
                 }
             }
@@ -2237,7 +2232,7 @@ impl ArchivalState {
         BlockHeight,
         usize,
         NativeCurrencyAmount,
-        Digest,
+        DigestLockScript,
         Digest,
         Digest,
     )> {
@@ -2246,9 +2241,8 @@ impl ArchivalState {
                 BlockHeight::from(16452),
                 1,
                 NativeCurrencyAmount::coins_from_str("0.10396").unwrap(),
-                // Since we don't know the lock script hash of this UTXO, we
-                // actually can't authenticate the amount in this burn.
-                Digest::try_from_hex("00000000000000000000000000000000000000000000000000000000000000000000000000000000").unwrap(),
+                // Since we don't know the lock script hash of this UTXO, we actually can't authenticate the amount in this burn.
+                DigestLockScript(Digest::try_from_hex("00000000000000000000000000000000000000000000000000000000000000000000000000000000").unwrap()),
                 Digest::try_from_hex("00000000000000000000000000000000000000000000000000000000000000000000000000000000").unwrap(),
                 Digest::try_from_hex("00000000000000000000000000000000000000000000000000000000000000000000000000000000").unwrap(),
             ),
@@ -2602,7 +2596,7 @@ pub(super) mod tests {
             .await
             .wallet_state
             .wallet_entropy
-            .nth_generation_spending_key(0);
+            .nth_forthegeneration_spending_key(0);
 
         let genesis_block = Block::genesis(network);
         let (block1, _) =
@@ -3032,7 +3026,7 @@ pub(super) mod tests {
         let cli_args = Args::default_with_network(network);
         let premine_rec_ws =
             mock_genesis_wallet_state(WalletEntropy::devnet_wallet(), &cli_args).await;
-        let premine_rec_spending_key = premine_rec_ws.wallet_entropy.nth_generation_spending_key(0);
+        let premine_rec_spending_key = premine_rec_ws.wallet_entropy.nth_forthegeneration_spending_key(0);
         let mut premine_rec = mock_genesis_global_state(
             3,
             premine_rec_ws.wallet_entropy,
@@ -3058,11 +3052,11 @@ pub(super) mod tests {
 
         let mut rng = StdRng::seed_from_u64(41251549301u64);
         let wallet_secret_alice = WalletEntropy::new_pseudorandom(rng.random());
-        let alice_spending_key = wallet_secret_alice.nth_generation_spending_key(0);
+        let alice_spending_key = wallet_secret_alice.nth_forthegeneration_spending_key(0);
         let mut alice = mock_genesis_global_state(3, wallet_secret_alice, cli_args.clone()).await;
 
         let wallet_secret_bob = WalletEntropy::new_pseudorandom(rng.random());
-        let bob_spending_key = wallet_secret_bob.nth_generation_spending_key(0);
+        let bob_spending_key = wallet_secret_bob.nth_forthegeneration_spending_key(0);
         let mut bob = mock_genesis_global_state(3, wallet_secret_bob, cli_args.clone()).await;
 
         let genesis_block = Block::genesis(network);

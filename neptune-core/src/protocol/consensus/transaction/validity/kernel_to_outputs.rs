@@ -25,17 +25,9 @@ use crate::protocol::proof_abstractions::tasm::program::TritonProgram;
 use crate::protocol::proof_abstractions::SecretWitness;
 
 #[derive(
-    Clone,
-    Debug,
-    Serialize,
-    Deserialize,
-    PartialEq,
-    Eq,
-    GetSize,
-    BFieldCodec,
-    FieldCount,
-    TasmObject,
+    Clone, Debug, Serialize, Deserialize, PartialEq, Eq, BFieldCodec, FieldCount, TasmObject,
 )]
+#[cfg_attr(any(test, feature = "arbitrary-impls"), derive(get_size2::GetSize))]
 pub struct KernelToOutputsWitness {
     pub output_utxos: SaltedUtxos,
     pub sender_randomnesses: Vec<Digest>,
@@ -364,7 +356,11 @@ mod spec {
     use crate::api::export::AdditionRecord;
     use crate::api::export::Utxo;
     use crate::protocol::proof_abstractions::tasm::builtins as tasm;
-    use crate::protocol::proof_abstractions::tasm::program::spec::TritonProgramSpecification;
+    use crate::protocol::proof_abstractions::tasm::program::tests::test_program_snapshot;
+    use crate::protocol::proof_abstractions::tasm::program::tests::TritonProgramSpecification;
+    use crate::triton_vm::proof::Claim;
+    use crate::triton_vm::stark::Stark;
+    use crate::util_types::mutator_set::addition_record::AdditionRecord;
     use crate::util_types::mutator_set::commit;
 
     impl TritonProgramSpecification for KernelToOutputs {

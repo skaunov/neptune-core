@@ -52,7 +52,6 @@ use tracing::error;
 use tracing::warn;
 
 use crate::api::export::AdditionRecord;
-use crate::api::export::NativeCurrencyAmount;
 use crate::api::export::NeptuneProof;
 use crate::api::export::TransactionProofType;
 use crate::application::config::tx_upgrade_filter::TxUpgradeFilter;

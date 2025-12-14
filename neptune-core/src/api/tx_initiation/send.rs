@@ -42,7 +42,7 @@ use crate::state::transaction::tx_creation_artifacts::TxCreationArtifacts;
 use crate::state::wallet::change_policy::ChangePolicy;
 use crate::GlobalStateLock;
 
-/// provides a send() method to send a neptune transaction in one call.
+/// provides a method to `send()` a Neptune transaction in one call
 #[derive(Debug)]
 pub struct TransactionSender {
     global_state_lock: GlobalStateLock,
@@ -55,8 +55,7 @@ impl From<GlobalStateLock> for TransactionSender {
 }
 
 impl TransactionSender {
-    // You should call offchain-notifications() on the returned value
-    // to retrieve (and store) offchain notifications, if any.
+    /// You should call offchain-notifications() on the returned value to retrieve (and store) offchain notifications, if any. 
     pub async fn send(
         &mut self,
         outputs: impl IntoIterator<Item = impl Into<OutputFormat>>,

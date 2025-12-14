@@ -28,8 +28,7 @@ pub fn derive_receiver_id(seed: Digest) -> BFieldElement {
 }
 
 /// Derive a seed and a nonce deterministically, in order to produce
-/// deterministic announcements, since these are needed to be able to
-/// reuse proofs for tests. These values are used in the encryption
+/// deterministic announcements, since these are needed to be able to reuse proofs for tests. These values are used in the encryption
 /// step.
 ///
 /// It's important that the *entire* payload is used here. As repeated
@@ -41,7 +40,7 @@ pub fn derive_receiver_id(seed: Digest) -> BFieldElement {
 pub fn deterministically_derive_seed_and_nonce(
     payload: &UtxoNotificationPayload,
 ) -> ([u8; 32], BFieldElement) {
-    let combined = Tip5::hash_pair(payload.sender_randomness, payload.utxo.lock_script_hash());
+    let combined = Tip5::hash_pair(payload.sender_randomness, payload.utxo.lock_script_hash().0);
     let [e0, e1, e2, e3, e4] = combined.values();
     let e0: [u8; 8] = e0.into();
     let e1: [u8; 8] = e1.into();
