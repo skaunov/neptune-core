@@ -6,11 +6,10 @@
 //! ### Naming
 //!
 //! These are called "Generation" keys because they are quantum-secure and it is
-//! believed/hoped that the cryptography should be unbreakable for at least a
-//! generation and hopefully many generations.  If correct, it would be safe to
-//! put funds in a paper or metal wallet and ignore them for decades, perhaps
-//! until they are transferred to the original owner's children or
-//! grand-children.
+//! believed/hoped that the cryptography should be unbreakable for at least 
+//! a generation and hopefully many generations. If correct, it would be safe 
+//! to put funds in a paper or metal wallet and ignore them for decades, perhaps
+//! until they are transferred to the original owner's children or grand-children.
 
 use aead::Aead;
 use aead::KeyInit;

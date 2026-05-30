@@ -58,16 +58,14 @@ pub(crate) async fn run(
         Why can't I just get that `root_dir_path`? (I was too naive to use `global_state_lock.cli().data_dir` initially, which is `None` at this point already.) */
         let mut kf = None;
 
-        let file_path = global_state_lock
-            .lock(|gs| {
+        if global_state_lock.cli().persistent {
+            let file_path = global_state_lock.lock(|gs| {
                 gs.wallet_state
                     .configuration
                     .data_directory()
                     .root_dir_path()
-            })
-            .await
-            .join(std::path::Path::new(FILENAME_PERSISTANTNODEID));
-        if global_state_lock.cli().persistent {
+            }).await.join(std::path::Path::new(FILENAME_PERSISTANTNODEID));
+
             if let Ok(mut f) = File::open(&file_path).await {
                 let mut buf: [u8; 64] = [0; 64];
                 if tokio::io::AsyncReadExt::read_exact(&mut f, &mut buf)

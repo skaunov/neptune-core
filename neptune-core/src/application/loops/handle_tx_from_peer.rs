@@ -5,10 +5,10 @@ use crate::application::loops::channel::{self, PeerTaskToMain};
 use crate::protocol::consensus::transaction::transaction_kernel::TransactionConfirmabilityError;
 use crate::protocol::peer::NegativePeerSanction;
 
-/// Return the depth of the problem.
+/// Returns the depth of the problem.
 /// - `None`: the `transaction` was sent to the main loop
 /// - `Some(None)`: it's not good enough to be shared further
-/// - `_`: it deserves `.punish`
+/// - `Some(Some(_))`: it deserves `.punish`
 pub(crate) async fn the(
     global_state_lock: crate::state::GlobalStateLock,
     to_main: tokio::sync::mpsc::Sender<channel::PeerTaskToMain>,
