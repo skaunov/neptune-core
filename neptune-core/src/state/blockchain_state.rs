@@ -110,7 +110,7 @@ impl BlockchainState {
     }
 
     /// Block height of current tip.
-    pub(crate) fn tip_height(&self) -> BlockHeight {
+    pub fn tip_height(&self) -> BlockHeight {
         self.tip().header().height
     }
 

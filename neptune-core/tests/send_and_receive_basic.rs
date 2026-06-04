@@ -128,7 +128,7 @@ pub async fn alice_sends_to_bob_tritonverify() -> anyhow::Result<()> {
     // .try_init();     
 
     let ([alice, bob], bob_address) = alice_sends_to_bob(
-        &GenesisNode::cluster_id(),
+        &GenesisNode::cluster_id(None),
         TxProvingCapability::PrimitiveWitness,
     ).await?;
 
@@ -268,7 +268,7 @@ pub async fn alice_sends_to_bob(
         .api_mut()
         .tx_sender_mut()
         .send(
-            vec![(bob_address, payment_amount)],
+            vec![(bob_address.clone(), payment_amount)],
             Default::default(),
             fee_amount,
             Timestamp::now(),

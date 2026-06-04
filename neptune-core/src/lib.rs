@@ -32,6 +32,8 @@ pub mod protocol;
 pub mod state;
 pub mod util_types;
 
+#[cfg(any(test, feature = "arbitrary-impls"))]
+pub mod arbitrary_arbitrary_impls;
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
 pub mod tests;

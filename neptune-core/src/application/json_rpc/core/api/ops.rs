@@ -203,16 +203,16 @@ pub enum RpcMethods {
     #[namespace(Namespace::Mining)]
     SubmitBlock,
 
-    #[namespace(Namespace::Utxoindex)]
+    #[namespace(Namespace::UtxoIndex)]
     BlockHeightsByFlags,
 
-    #[namespace(Namespace::Utxoindex)]
+    #[namespace(Namespace::UtxoIndex)]
     BlockHeightsByAdditionRecords,
 
-    #[namespace(Namespace::Utxoindex)]
+    #[namespace(Namespace::UtxoIndex)]
     BlockHeightsByAbsoluteIndexSets,
 
-    #[namespace(Namespace::Utxoindex)]
+    #[namespace(Namespace::UtxoIndex)]
     WasMined,
 
     #[namespace(Namespace::Mempool)]

@@ -83,7 +83,7 @@ impl WalletEntropy {
     // note: this is a read-only method and does not modify wallet state.  When
     // requesting a new key for purposes of a new wallet receiving address,
     // callers should use [wallet_state::WalletState::next_unused_spending_key()]
-    // which takes &mut self.
+    // which takes `&mut self`.
     pub fn nth_forthegeneration_spending_key(
         &self,
         index: u64,

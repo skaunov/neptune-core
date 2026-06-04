@@ -1287,7 +1287,7 @@ mod tests {
     fn uses_mining_address_value() {
         let network = Network::Main;
         let devnet_address = WalletEntropy::devnet_wallet()
-            .nth_generation_spending_key(0)
+            .nth_forthegeneration_spending_key(0)
             .to_address();
         let devnet_address: ReceivingAddress = devnet_address.into();
         let devnet_address_str = devnet_address.to_display_bech32m(network).unwrap();

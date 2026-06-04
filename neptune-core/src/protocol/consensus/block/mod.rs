@@ -1039,40 +1039,7 @@ impl Block {
         Ok(())
     }
 
-    /// Validate the proof of a block, an that the proof relates to the expected
-    /// appendices.
-    pub(crate) async fn validate_block_proof(
-        &self,
-        network: Network,
-    ) -> Result<(), BlockValidationError> {
-        let consensus_rule_set = ConsensusRuleSet::infer_from(network, self.header().height);
-
-        // 1.a)
-        for required_claim in BlockAppendix::consensus_claims(self.body(), consensus_rule_set) {
-            if !self.appendix().contains(&required_claim) {
-                return Err(BlockValidationError::AppendixMissingClaim);
-            }
-        }
-
-        // 1.b)
-        if self.appendix().len() > MAX_NUM_CLAIMS {
-            return Err(BlockValidationError::AppendixTooLarge);
-        }
-
-        // 1.c)
-        let BlockProof::SingleProof(block_proof) = &self.proof else {
-            return Err(BlockValidationError::ProofQuality);
-        };
-
-        // 1.d)
-        if !BlockProgram::verify(self.body(), self.appendix(), block_proof, network).await {
-            return Err(BlockValidationError::ProofValidity);
-        }
-
-        Ok(())
-    }
-
-    /// indicates if a difficulty reset should be performed.
+    /// indicates if a difficulty reset should be performed
     ///
     /// Reset only occurs for network(s) that define a difficulty-reset-interval,
     /// typically testnet(s).
@@ -1093,8 +1060,7 @@ impl Block {
 
     /// Determine whether the proof-of-work puzzle was solved correctly.
     ///
-    /// Specifically, compare the hash of the current block against the
-    /// required target. Depending on the consensus rule set that applies, this
+    /// Specifically, compare the hash of the current block against the required target. Depending on the consensus rule set that applies, this
     /// may be either the parent block's difficulty, or the block's own
     /// difficulty. Returns true if the target is met.
     pub fn has_proof_of_work(&self, network: Network, previous_block_header: &BlockHeader) -> bool {
@@ -1304,13 +1270,6 @@ impl Block {
         &self,
     ) -> Result<Vec<AdditionRecord>, BlockValidationError> {
         self.kernel.guesser_fee_addition_records(self.hash())
-    }
-
-    /// Return all addition records (transaction outputs) in this block,
-    /// including guesser rewards.
-    pub(crate) fn all_addition_records(&self) -> Result<Vec<AdditionRecord>, BlockValidationError> {
-        let block_hash = self.hash();
-        self.kernel.all_addition_records(block_hash)
     }
 
     /// Return all addition records (transaction outputs) in this block,

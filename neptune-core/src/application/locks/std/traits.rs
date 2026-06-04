@@ -2,7 +2,7 @@
 //! interface
 
 pub trait Atomic<T> {
-    /// Immutably access the data of type `T` in a closure and possibly return a result of type `R`
+    /// Immutably access the data of type `T` in a closure and possibly return a result of type `R`.
     ///
     /// # Example
     /// ```
@@ -18,7 +18,7 @@ pub trait Atomic<T> {
     where
         F: FnOnce(&T) -> R;
 
-    /// Mutably access the data of type `T` in a closure and possibly return a result of type `R`
+    /// Mutably access the data of type `T` in a closure and possibly return a result of type `R`.
     ///
     /// # Example
     /// ```

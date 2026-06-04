@@ -148,7 +148,7 @@ pub async fn setup_funded_wallet_with_mined_tx(
 mod thetritonprogram {
     use super::setup_funded_wallet_with_mined_tx;
     use crate::protocol::proof_abstractions::tasm::program::TritonError;
-    use crate::protocol::proof_abstractions::tasm::program::tests::TritonProgramSpecification;
+    use crate::protocol::proof_abstractions::tasm::program::spec::TritonProgramSpecification;
     use crate::protocol::proof_abstractions::SecretWitness;
     use proptest::prop_assert;
     use proptest::test_runner::RngSeed;

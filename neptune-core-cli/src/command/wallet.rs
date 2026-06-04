@@ -33,10 +33,10 @@ pub(crate) enum WalletCommand {
         table: bool,
     },
 
-    /// retrieves number of utxos the wallet expects to receive.
+    /// retrieves number of utxos the wallet expects to receive
     NumExpectedUtxos,
 
-    /// Get next unused generation receiving address
+    /// Get next unused generation receiving address.
     NextReceivingAddress,
 
     /// Get the nth generation receiving address.
@@ -62,7 +62,7 @@ pub(crate) enum WalletCommand {
     /// list known coins
     ListCoins,
 
-    /// claim an off-chain utxo-transfer.
+    /// claim an off-chain utxo-transfer
     ClaimUtxo {
         #[clap(subcommand)]
         format: ClaimUtxoFormat,

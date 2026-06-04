@@ -351,9 +351,7 @@ mod tests {
     impl SpendingKey {
         pub(crate) fn from_seed(seed: Digest, key_type: KeyType) -> Self {
             match key_type {
-                KeyType::Generation => {
-                    generation_address::GenerationSpendingKey::derive_from_seed(seed).into()
-                }
+                KeyType::Pokolen => pokolen_address::PokolenSpendingKey::derive_from_seed(seed).into(),
                 KeyType::Symmetric => symmetric_key::SymmetricKey::from_seed(seed).into(),
                 KeyType::EcHybrid => elliptic_curve_hybrid::EcHybridKey::from_seed(seed).into(),
                 KeyType::ViewingAddress => {

@@ -712,7 +712,9 @@ pub struct WasMinedRequest {
 pub struct WasMinedResponse {
     pub block_heights: Vec<BlockHeight>,
 }
+
 /* Mempool */
+#[derive(Clone, Copy, Debug, Serialize_tuple, Deserialize_tuple)]
 #[serde(rename_all = "camelCase")]
 pub struct TransactionsRequest {}
 

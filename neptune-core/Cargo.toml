@@ -213,11 +213,6 @@ workspace = true
 ## We use harness = false on these so that the divan reports are output on stdout.
 
 [[bench]]
-name = "sync_atomic"
-path = "benchmark/benches/sync_atomic.rs"
-harness = false
-
-[[bench]]
 name = "db_leveldb"
 path = "benchmark/benches/db_leveldb.rs"
 harness = false

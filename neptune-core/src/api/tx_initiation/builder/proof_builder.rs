@@ -160,9 +160,8 @@ impl<'a> ProofBuilder<'a> {
     ///
     /// See [TritonVmProofJobOptions::cancel_job_rx].
     ///
-    /// note that cancelling the future returned by `build()` will *not* cancel the
-    /// job in the job-queue, as that runs in a separately spawned Tokio task
-    /// managed by the job-queue
+    /// note that cancelling the future returned by `build()` will *not* cancel the job 
+    /// in the job-queue, as that runs in a separately spawned Tokio task managed by the job-queue
     pub async fn build(self) -> Result<Proof, CreateProofError> {
         let Self {
             program,
@@ -184,9 +183,8 @@ impl<'a> ProofBuilder<'a> {
             return Ok(proof);
         }
 
-        // non-determinism cannot reliably be obtained for mock proofs, so
-        // we invoke a callback to obtain it here only once certain we are
-        // building a real proof
+        /* non-determinism cannot reliably be obtained for mock proofs, so
+        we invoke a callback to obtain it here only once certain we are building a real proof */
         let nondeterminism = nondeterminism_callback();
 
         let proof_type = proof_job_options.job_settings.proof_type;
@@ -206,13 +204,5 @@ impl<'a> ProofBuilder<'a> {
                 capability,
             })
         }
-        // this builder only supports proofs that can be executed in triton-vm
-        if !proof_type.executes_in_vm() {
-            return Err(CreateProofError::NotVmProof(proof_type));
-        }
-
-        let job_queue = job_queue.unwrap_or_else(vm_job_queue);
-
-        prove_triton_program(program, claim, nondeterminism, job_queue, proof_job_options).await
     }
 }

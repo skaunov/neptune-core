@@ -151,7 +151,7 @@ impl EcHybridKey {
     pub(crate) fn lock_script_and_witness(&self) -> LockScriptAndWitness {
         let lock_script = self.to_address().lock_script();
         LockScriptAndWitness::new_with_nondeterminism(
-            lock_script.program,
+            lock_script,
             NonDeterminism::new(self.unlock_key_preimage.reversed().values()),
         )
     }

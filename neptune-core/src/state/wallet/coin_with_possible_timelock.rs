@@ -4,14 +4,12 @@ use itertools::Itertools;
 use num_traits::Zero;
 use serde::Deserialize;
 use serde::Serialize;
-use tasm_lib::prelude::Digest;
 
 use crate::protocol::consensus::transaction::lock_script::DigestLockScript;
 use crate::protocol::consensus::type_scripts::native_currency_amount::NativeCurrencyAmount;
 use crate::protocol::proof_abstractions::timestamp::Timestamp;
 
-/// An amount of Neptune coins, with confirmation timestamp and (if it has a
-/// time-lock) its release date.
+/// An amount of Neptune coins, with confirmation timestamp and (if it has a time-lock) its release date.
 ///
 /// For reporting purposes. Time-locks whose release dates are in the past are
 /// still set; they are only `None` if there never was a time-lock to begin

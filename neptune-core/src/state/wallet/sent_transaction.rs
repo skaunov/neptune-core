@@ -12,8 +12,7 @@ pub(crate) type AoclLeafIndex = u64;
 
 /// Represents a user-level tx that has been sent by this wallet.
 ///
-/// This type is intended for storing in the wallet-db in order to
-/// group together inputs and outputs as a single payment for purposes
+/// This type is intended for storing in the wallet-db in order to group together inputs and outputs as a single payment for purposes
 /// of wallet history display.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SentTransaction {

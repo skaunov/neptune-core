@@ -1378,15 +1378,14 @@ mod tests {
     #[traced_test]
     #[apply(shared_tokio_runtime)]
     async fn reward_mining_address_with_gobbling_fee() {
-        // Ensure that gobbling fee goes to the right address, the one set in
-        // the CLI arguments, if one such is set.
+        // Ensure that gobbling fee goes to the right address, the one set in the CLI arguments, if one such is set.
         let network = Network::Main;
 
         let mut rng: StdRng = StdRng::seed_from_u64(512777439429);
         let rando = WalletEntropy::new_pseudorandom(rng.random());
         let another_wallet = WalletEntropy::new_pseudorandom(rng.random());
         let mining_address: ReceivingAddress = another_wallet
-            .nth_generation_spending_key(0)
+            .nth_forthegeneration_spending_key(0)
             .to_address()
             .into();
         let cli_args = cli_args::Args {

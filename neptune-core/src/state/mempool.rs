@@ -329,7 +329,7 @@ impl Mempool {
         &self,
         kernel: &TransactionKernel,
         consensus_rule_set: ConsensusRuleSet,
-        minimum_fee: NativeCurrencyAmount,
+        minimum_fee: crate::api::export::NativeCurrencyAmount,
     ) -> Option<(TransactionKernel, Proof, UpgradePriority)> {
         // Constants to avoid going to the limit of the consensus rules in
         // terms of outputs and announcements, since the composer probably wants

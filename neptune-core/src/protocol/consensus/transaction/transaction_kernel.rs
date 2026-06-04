@@ -628,6 +628,16 @@ pub mod tests {
                 })
                 .boxed()
         }
+
+        fn lowest_aocl_leaf_index(&self) -> Option<u64> {
+            self.inputs
+                .iter()
+                .map(|input| {
+                    let (min_leaf, _) = input.absolute_indices.aocl_range().unwrap();
+                    min_leaf
+                })
+                .min()
+        }
     }
 
     #[test]
@@ -772,7 +782,6 @@ pub mod tests {
         use tasm_lib::twenty_first::bfe;
 
         use super::*;
-        use crate::api::export::GenerationSpendingKey;
         use crate::api::export::UnlockedUtxo;
         use crate::api::export::Utxo;
 
@@ -822,7 +831,7 @@ pub mod tests {
             test_runner: &mut TestRunner,
             include_lustration: bool,
         ) -> TransactionKernel {
-            let a_key = GenerationSpendingKey::derive_from_seed(Digest::default());
+            let a_key = crate::api::export::PokolenSpendingKey::derive_from_seed(Digest::default());
             let lock_script_and_witness = a_key.lock_script_and_witness();
 
             let input_utxo = Utxo::new_native_currency(

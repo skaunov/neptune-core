@@ -284,7 +284,11 @@ pub(crate) async fn send_coins(
         .build(&mut StateLock::Lock(Box::new(sender.clone())))
         .await
         .unwrap();
+
     let primitive_witness_proof = sender
+        .api()
+        .tx_initiator()
+        .generate_witness_proof(transaction_details.into());
     let primitive_witness = primitive_witness_proof.into_primitive_witness();
 
     println!(

@@ -1365,8 +1365,9 @@ impl ArchivalState {
         )))
     }
 
-    /// Return the canonical block with the given height. None if no height of this block is known yet.
-    async fn canonical_block_by_height(&self, block_height: BlockHeight) -> Option<Block> {
+    /// Return the canonical block with the given height. 
+    /// `None` if no height of this block is known yet.
+    pub(crate) async fn canonical_block_by_height(&self, block_height: BlockHeight) -> Option<Block> {
         let block_hash = self
             .archival_block_mmr
             .ammr()
@@ -1380,18 +1381,15 @@ impl ArchivalState {
         )
     }
 
-    /// Return the list of `[StrongUtxoKey]` of the guesser rewards for the
-    /// specified block belonging to the canonical chain. Can be used to check
+    /// Return the list of `[StrongUtxoKey]` of the guesser rewards for the specified block belonging to the canonical chain. Can be used to check
     /// if a wallet has already registered guesser reward UTXOs.
     ///
-    /// Returns none if no block of the specified height belonging to the
-    /// canonical chain is known.
+    /// Returns none if no block of the specified height belonging to the canonical chain is known.
     ///
     /// Perf: Does not read block from disk.
     ///
-    /// # Panics
-    ///
-    ///  - If the database is corrupted.
+    /// # Panics.
+    /// If the database is corrupted.
     pub(crate) async fn guesser_reward_strong_keys_for_block(
         &self,
         block_height: u64,
@@ -2129,8 +2127,10 @@ impl ArchivalState {
             sender_randomness,
             receiver_digest,
         ) in Self::known_burns() {
-            // Verify that lock script hash is that of burn lock script or that receiver digest is all-zeros (either suffices).
-            if receiver_digest != Digest::new(bfe_array![0;5]) && lock_script_hash != LockScript::burn().hash() {
+            /* Verify that lock script digest 
+            is that of burn lock script or that receiver digest is all-zeros (either suffices). */
+            if receiver_digest == Digest::new(bfe_array![0;5]) 
+            || lock_script_hash == LockScript::burn().hash() {
                 debug!(
                     "Burn {}/{} could not be validated because the receiver \
                     digest =/= (0,0,0,0,0) and the lock script hash does not \
@@ -2141,9 +2141,10 @@ impl ArchivalState {
             }
 
             // Get block.
-            let candidate_block_digests = self.block_height_to_block_digests(block_height).await;
             let mut canonical_block_digest = Digest::default();
-                    .await
+            for candidate_block_digest in self.block_height_to_block_digests(block_height).await {
+                if self.block_belongs_to_canonical_chain(candidate_block_digest).await
+                {
                     canonical_block_digest = candidate_block_digest;
                 }
             }

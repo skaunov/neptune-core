@@ -926,7 +926,7 @@ impl GlobalState {
     }
 
     /// Return the [`ConsensusRuleSet`] that applies for current tip.
-    pub(crate) fn consensus_rule_set(&self) -> ConsensusRuleSet {
+    pub fn consensus_rule_set(&self) -> ConsensusRuleSet {
         let tip_height = self.chain.tip_height();
         ConsensusRuleSet::infer_from(self.cli().network, tip_height)
     }
@@ -3029,37 +3029,6 @@ impl GlobalState {
                 }
             }
         }
-
-        // is it necessary?
-        let current_tip_digest = self.chain.tip().hash();
-        if self
-            .wallet_state
-            .is_synced_to(current_tip_digest, self.is_true_archival())
-            .await
-        {
-            debug!("Membership proof syncing not needed");
-            return Ok(());
-        }
-
-        // do we have an archival mutator set?
-        if self.chain.is_archival_node() {
-            self.restore_monitored_utxos_from_archival_mutator_set()
-                .await;
-            return Ok(());
-        }
-
-        // do we have blocks?
-        // This code is now dead, because we restore from the archival mutator
-        // set, but we keep it for now since we want to preserve the way of
-        // restoring membership proofs from blocks for a future light client.
-        if self.chain.is_archival_node() {
-            return self
-                .resync_membership_proofs_from_stored_blocks(current_tip_digest)
-                .await;
-        }
-
-        // request blocks from peers
-        todo!("We don't yet support non-archival nodes");
     }
 
     pub(crate) async fn response_to_sync_challenge(
@@ -6098,7 +6067,7 @@ mod tests {
             expected_num_blocks_at_tip_height: usize,
             expected_num_spendable_utxos: usize,
         ) {
-            // Verifying light state integrity
+            // Verifying light state integrity.
             let expected_tip_digest = expected_tip.hash();
             assert_eq!(expected_tip_digest, global_state.chain.tip().hash());
 
@@ -6588,6 +6557,8 @@ mod tests {
                 let expected_num_mutxos = if claim_coinbase { 3 } else { 1 };
                 assert_correct_global_state(
                     &global_state,
+                    block_1.clone(),
+                    Some(genesis_block.clone()),
                     1,
                     expected_num_mutxos,
                 )

@@ -1,12 +1,13 @@
 //! This module provides a builder for generating [TransactionDetails].
 //!
-//! The builder will modify state only if one or more new keys must be added to the wallet for change output(s).  see [TransactionDetailsBuilder::build()]
+//! The builder will modify state only if one or more new keys must be added to the wallet 
+//! for change output(s). See [TransactionDetailsBuilder::build()]
 //! for details.
 //!
 //! The resulting `TransactionDetails` contains all data needed for a [Transaction](crate::protocol::consensus::transaction::Transaction)
 //! except for a [TransactionProof](crate::protocol::consensus::transaction::TransactionProof).
 //!
-//! see [builder](super) for examples of using the builders together.
+//! see [builder](super) for examples of using the builders together
 use num_traits::CheckedAdd;
 use num_traits::CheckedSub;
 use tasm_lib::prelude::Digest;
@@ -56,13 +57,13 @@ impl TransactionDetailsBuilder {
         Default::default()
     }
 
-    /// add a timestamp.  defaults to Timestamp::now()
+    /// Add a timestamp.  Defaults to `Timestamp::now()`.
     pub fn timestamp(mut self, timestamp: Timestamp) -> Self {
         self.timestamp = Some(timestamp);
         self
     }
 
-    /// adds an input.
+    /// adds an input
     pub fn input(mut self, unlocked_utxo: UnlockedUtxo) -> Self {
         self.tx_inputs.push(unlocked_utxo);
         self

@@ -210,7 +210,7 @@ mod tests {
         let mut dynamic_override = dynamic_override.lock_guard_mut().await;
 
         let composition_receiver: ReceivingAddress = another_wallet
-            .nth_generation_spending_key(0)
+            .nth_forthegeneration_spending_key(0)
             .to_address()
             .into();
         let overridden_cb_distribution = CoinbaseDistribution::solo(composition_receiver.clone());
@@ -291,7 +291,7 @@ mod tests {
         // CLI flag override
         let another_wallet = WalletEntropy::new_random();
         let mining_address: ReceivingAddress = another_wallet
-            .nth_generation_spending_key(0)
+            .nth_forthegeneration_spending_key(0)
             .to_address()
             .into();
         let another_wallet = mock_genesis_wallet_state(

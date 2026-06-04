@@ -12,7 +12,7 @@ use crate::application::config::network::Network;
 use crate::protocol::consensus::transaction::announcement::Announcement;
 use crate::state::wallet::address::elliptic_curve_hybrid;
 use crate::state::wallet::address::elliptic_curve_hybrid::ELLIPTIC_CURVE_HYBRID_ADDRESS_FLAG;
-use crate::state::wallet::address::generation_address::GENERATION_FLAG;
+use crate::state::wallet::address::pokolen_address::POKOLEN_FLAG;
 use crate::state::wallet::address::symmetric_key::SYMMETRIC_KEY_FLAG;
 use crate::state::wallet::address::viewing_address;
 use crate::state::wallet::address::viewing_address::VIEWING_ADDRESS_FLAG;
@@ -32,13 +32,13 @@ use crate::BFieldElement;
 /// a method or struct may simply accept a `ReceivingAddress` and be
 /// forward-compatible with new types of Address as they are implemented.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[cfg_attr(any(test, feature = "arbitrary-impls"), derive(Arbitrary))]
+#[cfg_attr(any(test, feature = "arbitrary-impls"), derive(arbitrary::Arbitrary))]
 #[non_exhaustive]
 pub enum ReceivingAddress {
     /// a [`pokolen_address`]
     Pokolen(Box<pokolen_address::PokolenReceivingAddress>),
 
-    /// a [`symmetric_key`] acting as an address.
+    /// a [`symmetric_key`] acting as an address
     Symmetric(symmetric_key::SymmetricKey),
 
     /// An address that should only be known by sender and receiver.
@@ -115,17 +115,10 @@ impl ReceivingAddress {
 
     pub(crate) fn flag(&self) -> BFieldElement {
         match self {
-            ReceivingAddress::Generation(_) => GENERATION_FLAG,
+            ReceivingAddress::Pokolen(_) => POKOLEN_FLAG,
             ReceivingAddress::Symmetric(_) => SYMMETRIC_KEY_FLAG,
             ReceivingAddress::EcHybrid(_) => ELLIPTIC_CURVE_HYBRID_ADDRESS_FLAG,
             ReceivingAddress::ViewingAddress(_) => VIEWING_ADDRESS_FLAG,
-        }
-    }
-
-    pub(crate) fn flag(&self) -> BFieldElement {
-        match self {
-            ReceivingAddress::Pokolen(addr) => addr.flag(),
-            ReceivingAddress::Symmetric(addr) => addr.flag(),
         }
     }
 
@@ -300,7 +293,7 @@ impl ReceivingAddress {
             );
         }
 
-        if encoded.starts_with(generation_address::HRP_PREFIX) {
+        if encoded.starts_with(pokolen_address::HRP_PREFIX) {
             return Ok(
                 pokolen_address::PokolenReceivingAddress::from_bech32m(encoded, network)?
                     .into(),
@@ -315,7 +308,7 @@ impl ReceivingAddress {
         Ok(key.into())
     }
 
-    /// returns human-readable-prefix (hrp) for a given network
+    /// returns human-readable-prefix (HRP) for a given network
     pub fn get_hrp(&self, network: Network) -> String {
         KeyType::from(self).get_hrp(network)
     }
@@ -348,14 +341,13 @@ mod tests {
     use test_strategy::proptest;
 
     use super::*;
-    use crate::api::export::GenerationSpendingKey;
     use crate::api::export::SymmetricKey;
     use crate::state::wallet::address::elliptic_curve_hybrid::EcHybridKey;
     use crate::state::wallet::address::viewing_address::ViewingAddress;
 
     fn address_from_seed(seed: Digest, key_type: KeyType) -> ReceivingAddress {
         match key_type {
-            KeyType::Generation => GenerationSpendingKey::derive_from_seed(seed)
+            KeyType::Pokolen => crate::api::export::PokolenSpendingKey::derive_from_seed(seed)
                 .to_address()
                 .into(),
             KeyType::Symmetric => ReceivingAddress::Symmetric(SymmetricKey::from_seed(seed)),
@@ -413,7 +405,7 @@ mod tests {
             );
             assert!(
                 ReceivingAddress::from_bech32m(
-                    &format!("{}1{as_}", generation_address::HRP_PREFIX),
+                    &format!("{}1{as_}", pokolen_address::HRP_PREFIX),
                     network
                 )
                 .is_err(),

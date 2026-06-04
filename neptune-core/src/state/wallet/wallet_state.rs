@@ -156,10 +156,7 @@ impl Debug for WalletState {
 }
 
 impl WalletState {
-    /// Generate [`ComposerParameters`] for composing the next block. If an
-    /// overridden coinbase distribution is specified, that will be used. If no
-    /// coinbase distribution is specified, the entire coinbase reward goes to
-    /// an address of the wallet. If the coinbase distribution *is* set, it is
+    /// Generate [`ComposerParameters`] for composing the next block. If an overridden coinbase distribution is specified, that will be used. If no coinbase distribution is specified, the entire coinbase reward goes to an address of the wallet. If the coinbase distribution *is* set, it is
     /// assumed that the composer reward does not go to the wallet of this node.
     ///
     ///  # Panics
@@ -198,10 +195,9 @@ impl WalletState {
         )
     }
 
-    /// Store information needed to recover mutator set membership proof of a
-    /// UTXO, in case the wallet database is deleted.
+    /// Store information needed to recover mutator set membership proof of a UTXO, in case the wallet database is deleted.
     ///
-    /// Uses non-blocking I/O via tokio.
+    /// Uses non-blocking I/O via Tokio.
     pub(crate) async fn store_utxo_ms_recovery_data(
         &self,
         utxo_ms_recovery_data: IncomingUtxoRecoveryData,
@@ -220,7 +216,7 @@ impl WalletState {
             .await?;
         let mut incoming_secrets_file = BufWriter::new(incoming_secrets_file);
 
-        // Create JSON string ending with a newline as this flushes the write
+        // Create JSON string ending with a newline as this flushes the write.
         let mut json_string = serde_json::to_string(&utxo_ms_recovery_data)?;
         json_string.push_str(LINE_ENDING);
         incoming_secrets_file
@@ -364,8 +360,7 @@ impl WalletState {
         //     confirmed.
         //  3. Using derivation-index 0 allows us to avoid modifying
         //     global/wallet state.
-        //  4. The singleton of derivation-indices {0} is easier to scan for
-        //     than a non-trivial set.
+        //  4. The singleton of derivation-indices {0} is easier to scan for than a non-trivial set.
         //
         // Wallets start at key derivation index 1 for all UTXOs that are
         // neither composing rewards, nor proof upgrading rewards, nor premine
@@ -628,7 +623,7 @@ impl WalletState {
             .await?;
         let mut outgoing_secrets_file = BufWriter::new(outgoing_secrets_file);
 
-        // Create JSON string ending with a newline as this flushes the write
+        // Create JSON string ending with a newline as this flushes the write,
         let mut json_string = serde_json::to_string(output)?;
         json_string.push_str(LINE_ENDING);
         outgoing_secrets_file
@@ -642,8 +637,7 @@ impl WalletState {
         Ok(())
     }
 
-    /// Read the outgoing randomness file, and return its content parsed as a
-    /// list of [`UtxoTriple`]s.
+    /// Read the outgoing randomness file, and return its content parsed as a list of [`UtxoTriple`]s.
     pub async fn parse_outgoing_randomness(&self) -> Result<Vec<UtxoTriple>> {
         let outgoing_secrets_file = OpenOptions::new()
             .read(true)
@@ -1051,7 +1045,7 @@ impl WalletState {
         num_future_keys: usize,
     ) -> Box<dyn Iterator<Item = (u64, SpendingKey)> + '_> {
         match key_type {
-            KeyType::Generation => Box::new(
+            KeyType::Pokolen => Box::new(
                 self.get_future_generation_spending_keys(num_future_keys)
                     .map(|(i, key)| (i, SpendingKey::from(key))),
             ),
@@ -1070,11 +1064,9 @@ impl WalletState {
         }
     }
 
-    /// Return an iterator over all `SpendingKey`s of the given type that the
-    /// wallet knows about.
+    /// Return an iterator over all `SpendingKey`s of the given type that the wallet knows about.
     ///
-    /// In particular, this includes all keys generated deterministically from
-    /// the counter.
+    /// In particular, this includes all keys generated deterministically from the counter.
     pub fn get_known_spending_keys(
         &self,
         key_type: KeyType,
@@ -3691,7 +3683,7 @@ pub(crate) mod tests {
 
             let genesis = Block::genesis(network);
             let guesser_address = alice_wallet.guesser_fee_key().to_address();
-            let change_key = alice_wallet.nth_forthegeneration_spending_key(0).into();
+            let change_key: SpendingKey = alice_wallet.nth_forthegeneration_spending_key(0).into();
             let guesser_fraction = 0.5f64;
 
             // Alice mines a block
@@ -3744,6 +3736,7 @@ pub(crate) mod tests {
                 NativeCurrencyAmount::coins(1),
                 now,
                 change_key.clone(),
+                rng.random(),
             )
             .await
             .unwrap();
@@ -3765,6 +3758,7 @@ pub(crate) mod tests {
                 NativeCurrencyAmount::coins(1),
                 now,
                 change_key.clone(),
+                rng.random(),
             )
             .await
             .unwrap();
@@ -4312,6 +4306,7 @@ pub(crate) mod tests {
                 NativeCurrencyAmount::coins(1),
                 timestamp,
                 change_key.clone(),
+                rand::rng().random(),
             )
             .await
             .unwrap();

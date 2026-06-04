@@ -27,7 +27,7 @@ use super::LockType;
 ///
 /// It is also possible to provide a name and callback `fn` during instantiation.  In this way, the application can easily trace lock acquisitions.
 ///
-/// # Examples
+/// # Examples.
 /// ```
 /// # use neptune_cash::application::locks::std::{AtomicRw, LockEvent, LockCallbackFn};
 /// struct Car {
@@ -193,7 +193,7 @@ impl<T> From<AtomicRw<T>> for Arc<RwLock<T>> {
     }
 }
 
-// note: we impl the Atomic trait methods here also so they
+// Note: we impl the Atomic trait methods here also so they
 // can be used without caller having to use the trait.
 impl<T> AtomicRw<T> {
     /// Acquire read lock and return an `RwLockReadGuard`
@@ -230,9 +230,8 @@ impl<T> AtomicRw<T> {
         AtomicRwWriteGuard::new(guard, &self.lock_callback_info)
     }
 
-    /// Immutably access the data of type `T` in a closure and possibly return a result of type `R`
-    ///
-    /// # Examples
+    /// Immutably access the data of type `T` in a closure and possibly return a result of type `R`.
+    /// # Examples.
     /// ```
     /// # use neptune_cash::application::locks::std::{AtomicRw, traits::*};
     /// struct Car {
@@ -252,8 +251,7 @@ impl<T> AtomicRw<T> {
         f(&my_guard)
     }
 
-    /// Mutably access the data of type `T` in a closure and possibly return a result of type `R`
-    ///
+    /// Mutably access the data of type `T` in a closure and possibly return a result of type `R`.
     /// # Examples
     /// ```
     /// # use neptune_cash::application::locks::std::{AtomicRw, traits::*};
@@ -274,9 +272,7 @@ impl<T> AtomicRw<T> {
         f(&mut my_guard)
     }
 
-    /// get copy of the locked value T (if T implements Copy).
-    ///
-    /// # Example
+    /// # Example.
     /// ```
     /// # use neptune_cash::application::locks::std::{AtomicRw, traits::*};
     /// let atomic_u64 = AtomicRw::from(25u64);
@@ -290,9 +286,7 @@ impl<T> AtomicRw<T> {
         self.lock(|v| *v)
     }
 
-    /// set the locked value T (if T implements Copy).
-    ///
-    /// # Example
+    /// # Example.
     /// ```
     /// # use neptune_cash::application::locks::std::{AtomicRw, traits::*};
     /// let mut atomic_bool = AtomicRw::from(false);
@@ -306,7 +300,7 @@ impl<T> AtomicRw<T> {
         self.lock_mut(|v| *v = value)
     }
 
-    /// retrieve lock name if present, or None
+    /// retrieve lock name if present, or `None`
     #[inline]
     pub fn name(&self) -> Option<&str> {
         self.lock_callback_info.lock_info_owned.name.as_deref()
@@ -349,8 +343,7 @@ impl<T> Atomic<T> for AtomicRw<T> {
     }
 }
 
-/// A wrapper for [RwLockReadGuard] that can optionally call a callback to
-/// notify when a lock event occurs.
+/// A wrapper for [RwLockReadGuard] that can optionally call a callback to notify when a lock event occurs.
 #[derive(Debug)]
 pub struct AtomicRwReadGuard<'a, T> {
     guard: RwLockReadGuard<'a, T>,

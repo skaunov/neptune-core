@@ -393,16 +393,13 @@ mod tests {
         // Sleep to allow transaction to find its way into the mempool.
         tokio::time::sleep(Duration::from_secs(1)).await;
 
-        // Verify tx is in mempool
-        assert_eq!(
-            1,
-            client
+        // Verify tx is in mempool.
+        let mempool_txs = client
                 .get_transactions_by_addition_records(resp.outputs)
                 .await
                 .unwrap()
-                .transactions
-                .len()
-        );
+            .transactions;
+        assert_eq!(1, mempool_txs.len());
 
         assert_eq!(
             key_counter_prior + 1,

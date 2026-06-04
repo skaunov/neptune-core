@@ -122,7 +122,18 @@ impl TransactionProof {
         }
     }
 
+    pub(crate) fn proof_type(&self) -> TransactionProofType {
+        match self {
+            TransactionProof::Witness(_) => TransactionProofType::PrimitiveWitness,
+            TransactionProof::ProofCollection(_) => TransactionProofType::ProofCollection,
+            TransactionProof::SingleProof(_) => TransactionProofType::SingleProof,
+        }
+    }
+
     /// verify this proof is valid for a provided transaction id
+    ///
+    /// Block height is the height of the block that matches the transaction's
+    /// mutator set accumulator.
     pub async fn verify(
         &self,
         kernel_mast_hash: Digest,

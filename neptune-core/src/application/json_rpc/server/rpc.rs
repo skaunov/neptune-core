@@ -22,8 +22,7 @@ pub struct RpcServer {
     ///    balance.
     ///
     /// If untrusted third parties have access to the RPC server, this boolean
-    /// should be set to false, because otherwise the node is exposed to
-    /// malicious behavior.
+    /// should be set to false, because otherwise the node is exposed to malicious behavior.
     pub(crate) unrestricted: bool,
 }
 
@@ -54,12 +53,12 @@ impl RpcServer {
             }
         }
 
-        if namespaces.contains(&Namespace::Utxoindex) {
+        if namespaces.contains(&Namespace::UtxoIndex) {
             let has_utxo_index =
                 state.chain.is_archival_node() && state.chain.archival_state().utxo_index.is_some();
 
             if !has_utxo_index {
-                namespaces.remove(&Namespace::Utxoindex);
+                namespaces.remove(&Namespace::UtxoIndex);
                 error!("Node does not maintain a UTXO index, cannot enable UTXO Index namespace.");
             }
         }

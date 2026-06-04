@@ -1,11 +1,13 @@
-//! Provides simplified tokio lock types for sharing data between threads
-
-// note: twenty-first::sync has equivalent wrappers for std::sync types.
-//       It would make sense to put these tokio wrappers there also except
-//       that twenty-first presently has no tokio dependency and I didn't
-//       really want to introduce one just for this.  So that's why they are
-//       here instead.  We may wish to revisit in the future, and maybe
-//       put all the sync types in their own crate.
+//! Provides simplified Tokio lock types for sharing data between threads.
+//!
+//! # note
+//! 
+//! `twenty-first::sync` has equivalent wrappers for std::sync types.
+//!       It would make sense to put these Tokio wrappers there also except
+//!       that twenty-first presently has no Tokio dependency and I didn't
+//!       really want to introduce one just for this.  So that's why they are
+//!       here instead.  We may wish to revisit in the future, and maybe
+//!       put all the sync types in their own crate.
 
 mod atomic_mutex;
 mod atomic_rw;

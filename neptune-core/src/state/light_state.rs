@@ -41,8 +41,11 @@ impl LightState {
                 .expect("Block stored as tip must be valid"),
             tip: block,
             time_to_mine: None,
-            network,
+            network
+        }
     }
+
+    /// A reference to the most canonical block seen on the network.
     pub fn tip(&self) -> &Block {
         &self.tip
     }

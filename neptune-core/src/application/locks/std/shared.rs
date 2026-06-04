@@ -1,4 +1,4 @@
-/// Indicates the lock's underlying type
+/// Indicates the lock's underlying type.
 #[derive(Debug, Clone, Copy)]
 pub enum LockType {
     Mutex,
@@ -47,7 +47,7 @@ impl LockInfoOwned {
     }
 }
 
-/// Contains metadata about a lock
+/// Contains metadata about a lock.
 #[derive(Debug, Clone)]
 pub struct LockInfo<'a> {
     name: Option<&'a str>,
@@ -86,7 +86,7 @@ impl LockCallbackInfo {
     }
 }
 
-/// Represents an event (acquire/release) for a lock
+/// Represents an event (acquire/release) for a lock.
 #[derive(Debug, Clone)]
 pub enum LockEvent<'a> {
     TryAcquire {

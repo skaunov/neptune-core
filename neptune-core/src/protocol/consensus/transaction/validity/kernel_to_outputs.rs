@@ -356,14 +356,10 @@ mod spec {
     use crate::api::export::AdditionRecord;
     use crate::api::export::Utxo;
     use crate::protocol::proof_abstractions::tasm::builtins as tasm;
-    use crate::protocol::proof_abstractions::tasm::program::tests::test_program_snapshot;
-    use crate::protocol::proof_abstractions::tasm::program::tests::TritonProgramSpecification;
-    use crate::triton_vm::proof::Claim;
-    use crate::triton_vm::stark::Stark;
-    use crate::util_types::mutator_set::addition_record::AdditionRecord;
     use crate::util_types::mutator_set::commit;
 
-    impl TritonProgramSpecification for KernelToOutputs {
+    impl crate::protocol::proof_abstractions::tasm::program::spec::
+    TritonProgramSpecification for KernelToOutputs {
         fn source(&self) {
             let txk_digest: Digest = tasm::tasmlib_io_read_stdin___digest();
             let start_address: BFieldElement =

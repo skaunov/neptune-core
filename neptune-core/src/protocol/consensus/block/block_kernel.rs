@@ -100,34 +100,7 @@ impl BlockKernel {
         Ok(MutatorSetUpdate::new(inputs, outputs))
     }
 
-    /// Return all addition records, including guesser fee outputs, invoked by
-    /// this block.
-    pub fn all_addition_records(
-        &self,
-        block_hash: Digest,
-    ) -> Result<Vec<AdditionRecord>, BlockValidationError> {
-        let mut addition_records = self.body.transaction_kernel.outputs.clone();
-        let guesser_addition_records = self.guesser_fee_addition_records(block_hash)?;
-        addition_records.extend(guesser_addition_records);
-
-        Ok(addition_records)
-    }
-
-    /// Return the mutator set update, including guesser fee outputs, invoked by
-    /// this block.
-    pub fn mutator_set_update(
-        &self,
-        block_hash: Digest,
-    ) -> Result<MutatorSetUpdate, BlockValidationError> {
-        let outputs = self.all_addition_records(block_hash)?;
-        let inputs = RemovalRecordList::try_unpack(self.body.transaction_kernel.inputs.clone())
-            .map_err(BlockValidationError::from)?;
-
-        Ok(MutatorSetUpdate::new(inputs, outputs))
-    }
-
-    /// Return all addition records, including guesser fee outputs, invoked by
-    /// this block.
+    /// Return all addition records, including guesser fee outputs, invoked by this block.
     pub fn all_addition_records(
         &self,
         block_hash: Digest,

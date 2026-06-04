@@ -322,7 +322,7 @@ pub(crate) mod tests {
     use crate::protocol::consensus::transaction::transaction_kernel::TransactionKernelModifier;
     use crate::protocol::proof_abstractions::tasm::program::TritonVmProofJobOptions;
     use crate::state::mempool::upgrade_priority::UpgradePriority;
-    use crate::state::wallet::address::generation_address::GenerationReceivingAddress;
+    use crate::state::wallet::address::pokolen_address::PokolenReceivingAddress;
     use crate::state::wallet::expected_utxo::ExpectedUtxo;
     use crate::state::wallet::utxo_notification::UtxoNotificationMedium;
     use crate::state::wallet::wallet_entropy::WalletEntropy;
@@ -893,7 +893,7 @@ pub(crate) mod tests {
 
         // Now make a non-lustrating transaction
         let outputs = vec![OutputFormat::AddressAndAmount(
-            GenerationReceivingAddress::derive_from_seed(Digest::default()).into(),
+            PokolenReceivingAddress::derive_from_seed(Digest::default()).into(),
             NativeCurrencyAmount::coins(3),
         )];
         let fee = NativeCurrencyAmount::coins(1);
@@ -1039,9 +1039,8 @@ pub(crate) mod tests {
                 guesser_tx_b,
                 GuessingConfiguration {
                     num_guesser_threads: cli.guesser_threads,
-                    address: GenerationReceivingAddress::derive_from_seed(Digest::default()).into(),
-                    // For deterministic pow-guessing, both RNG and timestamp
-                    // must be deterministic.
+                    address: PokolenReceivingAddress::derive_from_seed(Digest::default()).into(),
+                    // For deterministic pow-guessing, both RNG and timestamp must be deterministic.
                     override_rng: Some(rng),
                     override_timestamp: Some(guesser_timestamp_b),
                 },

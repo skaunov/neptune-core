@@ -329,8 +329,4 @@ mod tests {
             );
         }
     }
-
-    pub(super) fn flag(&self) -> BFieldElement {
-        SYMMETRIC_KEY_FLAG
-    }
 }

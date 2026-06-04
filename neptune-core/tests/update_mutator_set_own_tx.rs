@@ -35,16 +35,16 @@ async fn worker(mut alice: GenesisNode, new_block_source: SourceOfNewBlocks) {
         "Expected block height: 2"
     );
 
-    // Generate an address
+    // Generate an address.
     let alice_address = alice
         .gsl
         .api_mut()
         .wallet_mut()
-        .next_receiving_address(KeyType::Generation)
+        .next_receiving_address(KeyType::Pokolen)
         .await
         .unwrap();
 
-    // Create transaction to self
+    // Create transaction to self.
     let accept_lustrations = true;
     let tx_artifacts = alice
         .gsl

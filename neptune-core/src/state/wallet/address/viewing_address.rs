@@ -114,7 +114,7 @@ impl ViewingAddressKey {
     pub(crate) fn lock_script_and_witness(&self) -> LockScriptAndWitness {
         let lock_script = self.to_address().lock_script();
         LockScriptAndWitness::new_with_nondeterminism(
-            lock_script.program,
+            lock_script,
             NonDeterminism::new(self.unlock_key_preimage.reversed().values()),
         )
     }
@@ -175,7 +175,7 @@ impl ViewingAddress {
         bytes
     }
 
-    /// Manually deserialize from exactly 64 bytes
+    /// Manually deserialize from exactly 64 bytes.
     fn from_raw_bytes(bytes: &[u8]) -> Result<Self, &'static str> {
         if bytes.len() != Self::RAW_SERIALIZATION_LENGTH {
             return Err("Invalid byte length for ViewingAddress: expected exactly 96 bytes");

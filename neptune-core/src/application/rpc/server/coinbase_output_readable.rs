@@ -47,7 +47,7 @@ mod tests {
     #[test]
     fn print_coinbase_output_readable_as_json() {
         let recipient = WalletEntropy::devnet_wallet()
-            .nth_receiving_address(0, KeyType::Generation)
+            .nth_receiving_address(0, KeyType::Pokolen)
             .to_display_bech32m(Network::Main)
             .unwrap();
         let timelocked = CoinbaseOutputReadable::new(540, recipient.clone(), true);

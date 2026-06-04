@@ -2917,12 +2917,6 @@ mod tests {
             assert!(block_with_valid_tvmv1_pow
                 .pow_verify_for_tests(difficulty.target(), ConsensusRuleSet::TvmProofVersion1));
 
-            let mut block_with_valid_tvmv1_pow = block.clone();
-            block_with_valid_tvmv1_pow.satisfy_pow(difficulty, ConsensusRuleSet::TvmProofVersion1);
-            assert!(block_with_valid_tvmv1_pow.is_valid_mock_pow(difficulty.target()));
-            assert!(block_with_valid_tvmv1_pow
-                .pow_verify(difficulty.target(), ConsensusRuleSet::TvmProofVersion1));
-
             (
                 invalid_pow,
                 block_with_valid_mock_pow,
@@ -4294,7 +4288,7 @@ mod tests {
                 ConsensusRuleSet::HardforkAlpha,
             );
             let hf_beta = (
-                BLOCK_HEIGHT_HARDFORK_BETA_MAIN_NET.previous().unwrap(),
+                crate::protocol::consensus::consensus_rule_set::BLOCK_HEIGHT_HARDFORK_BETA_MAIN_NET.previous().unwrap(),
                 ConsensusRuleSet::TvmProofVersion1,
                 ConsensusRuleSet::HardforkBeta,
             );

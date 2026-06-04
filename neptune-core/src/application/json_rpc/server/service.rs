@@ -6,7 +6,6 @@ use std::time::Duration;
 use async_trait::async_trait;
 use futures::StreamExt;
 use itertools::Itertools;
-use tasm_lib::prelude::Digest;
 use tokio::sync::oneshot;
 use tracing::debug;
 
@@ -2112,7 +2111,7 @@ pub mod tests {
                 Default::default(),
                 mock_amount,
                 network.launch_date() + Timestamp::months(3),
-                accept_lustrations,
+                true
             )
             .await
             .unwrap();

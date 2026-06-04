@@ -596,6 +596,9 @@ pub(crate) async fn fake_valid_block_proposal_from_tx(
         let claim = BlockProgram::claim(&body, &appendix);
         crate::protocol::proof_abstractions::verifier::cache_true_claims([claim.clone()]).await;
         (appendix, BlockProof::SingleProof(Proof::invalid()))
+    };
+
+    Block::new(header, body, appendix, proof)
 }
 /// Create a block from a transaction without the hassle of proving but such
 /// that it appears valid.

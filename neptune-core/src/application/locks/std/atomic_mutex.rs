@@ -13,7 +13,7 @@ use super::LockType;
 
 /// An `Arc<Mutex<T>>` wrapper to make data thread-safe and easy to work with.
 ///
-/// # Example
+/// # Example.
 /// ```
 /// # use neptune_cash::application::locks::std::{AtomicMutex, traits::*};
 /// struct Car {
@@ -24,11 +24,11 @@ use super::LockType;
 /// atomic_car.lock_mut(|mut c| c.year = 2023);
 /// ```
 ///
-/// It is also possible to provide a name and callback fn
+/// It is also possible to provide a name and callback `fn`
 /// during instantiation.  In this way, the application
 /// can easily trace lock acquisitions.
 ///
-/// # Examples
+/// # Examples.
 /// ```
 /// # use neptune_cash::application::locks::std::{AtomicMutex, LockEvent, LockCallbackFn};
 /// struct Car {
@@ -60,7 +60,7 @@ use super::LockType;
 /// atomic_car.lock_mut(|mut c| {c.year = 2023});
 /// ```
 ///
-/// results in:
+/// results in
 /// ```text
 /// TryAcquire lock `car` of type `Mutex` for `Read` by
 ///     |-- thread main, `ThreadId(1)`
@@ -194,7 +194,7 @@ impl<T> From<AtomicMutex<T>> for Arc<Mutex<T>> {
     }
 }
 
-// note: we impl the Atomic trait methods here also so they
+// Note: we impl the `Atomic` trait methods here also so they
 // can be used without caller having to use the trait.
 impl<T> AtomicMutex<T> {
     pub const fn const_new(
@@ -214,7 +214,7 @@ impl<T> AtomicMutex<T> {
         }
     }
 
-    /// Acquire read lock and return an `AtomicMutexGuard`
+    /// Acquire read lock and return an `AtomicMutexGuard`.
     ///
     /// # Examples
     /// ```
@@ -369,7 +369,7 @@ impl<T> Atomic<T> for AtomicMutex<T> {
     }
 }
 
-/// A wrapper for [MutexGuard] that can optionally call a callback to notify
+/// A wrapper for [`MutexGuard`] that can optionally call a callback to notify
 /// when the lock event occurs
 #[derive(Debug)]
 pub struct AtomicMutexGuard<'a, T> {

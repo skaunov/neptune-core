@@ -2345,10 +2345,19 @@ impl NeptuneRPCServer {
     ) -> RpcResult<bool> {
         proposal.set_header_pow(pow);
 
-        if !proposal.has_proof_of_work(self.state.cli().network, &tip_header) {
+        Ok(if proposal.has_proof_of_work(self.state.cli().network, &tip_header) {
+            // No time to waste! Inform main_loop!
+            let solution = Box::new(proposal);
+            let _ = self
+                .rpc_server_to_main_tx
+                .send(RPCServerToMain::ProofOfWorkSolution(solution))
+                .await;
+
+            true
+        } else {
             warn!("Got claimed PoW solution but PoW solution is not valid.");
-            Ok(false)
-        }
+            false
+        })
     }
 
     /// get the data_directory for this neptune-core instance

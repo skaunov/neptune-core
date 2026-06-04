@@ -66,7 +66,7 @@ async fn wallet_with_mining_rewards(num_blocks: u32, test_id: u8) -> (GenesisNod
 ///  6. Bob verifies the unconfirmed balance matches consolidation amount.
 ///
 #[tokio::test(flavor = "multi_thread")]
-#[traced_test]
+#[tracing_test::traced_test]
 pub async fn consolidation_basic() {
     logging::tracing_logger();
     let timeout_secs = 5;
@@ -445,7 +445,7 @@ pub async fn merge_consolidation_txs() {
         .gsl
         .api_mut()
         .wallet_mut()
-        .next_receiving_address(KeyType::Generation)
+        .next_receiving_address(KeyType::Pokolen)
         .await
         .unwrap();
 
