@@ -1,30 +1,28 @@
 use std::net::IpAddr;
 
 use clap::Parser;
-use libp2p::Multiaddr;
+use multiaddr::Multiaddr;
 
 /// Network Command -- a command related to the peer-to-peer or networking
 /// layers.
 #[derive(Debug, Clone, Parser)]
 pub(crate) enum NetworkCommand {
-    /// retrieve address for peers to contact this neptune-core node
+    /// retrieve address for peers to contact this `neptune-core` node
     OwnListenAddressForPeers,
 
-    /// retrieve instance-id of this neptune-core node
+    /// retrieve instance-id of this `neptune-core` node
     OwnInstanceId,
 
     /// Clear all peer standings.
     ///
-    /// This is a legacy command that applies to the peer loop logic only. So in
-    /// particular, any peers banned at the modern libp2p-level will remain
+    /// This is a legacy command that applies to the peer loop logic only. So in particular, any peers banned at the modern `libp2p`-level will remain
     /// banned. For the modern equivalent, use the command `unban --all` (which
     /// also clears all standings at the peer loop logic level).
     ClearAllStandings,
 
     /// Clear standing for peer with a given IP.
     ///
-    /// This is a legacy command that applies to the peer loop logic only. So in
-    /// particular, if the peer is banned at the modern libp2p-level, that ban
+    /// This is a legacy command that applies to the peer loop logic only. So in particular, if the peer is banned at the modern libp2p-level, that ban
     /// will remain in effect. For the modern equivalent, use the command
     /// `unban` (which also clears the peer's standing at the peer loop logic
     /// level).
@@ -39,7 +37,7 @@ pub(crate) enum NetworkCommand {
 
     /// Unban one or more peers.
     Unban {
-        /// The Multiaddrs to unban
+        /// The Multiaddrs to unban.
         #[arg(num_args = 0..)]
         addresses: Vec<Multiaddr>,
 

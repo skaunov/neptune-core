@@ -2216,10 +2216,10 @@ pub trait RPC {
     /// ```
     async fn prove_transfer(
         token: auth::Token,
-        tx_ix: u64,
-        utxo_ix: usize,
-        block: Digest,
-    ) -> RpcResult<(Claim, NeptuneProof)>;
+        tx_ix: Option<u64>,
+        utxo_ix: Option<usize>,
+        block: Option<Digest>,
+    ) -> RpcResult<(Digest, Vec<(Claim, Result<NeptuneProof, String>)>)>;
 
     async fn prove_reserves(
         token: auth::Token,
@@ -4719,10 +4719,10 @@ impl RPC for NeptuneRPCServer {
         self,
         _context: ::tarpc::context::Context,
         token: auth::Token,
-        tx_ix: u64,
-        utxo_ix: usize,
-        block: Digest,
-    ) -> RpcResult<(Claim, NeptuneProof)> {
+        tx_ix: Option<u64>,
+        utxo_ix: Option<usize>,
+        block: Option<Digest>,
+    ) -> RpcResult<(Digest, Vec<(Claim, Result<NeptuneProof, String>)>)> {
         log_slow_scope!(fn_name!());
         token.auth(&self.valid_tokens)?;
 
@@ -4730,7 +4730,9 @@ impl RPC for NeptuneRPCServer {
             self.state, tx_ix,
             utxo_ix,
             block,
-        ).await.map_err(RpcError::from)
+        ).await.map_err(RpcError::from).map(|(block, data)| (block, data.into_iter().map(
+            |(claim, proof)| (claim, proof.map_err(|e| e.to_string()))
+        ).collect()))
     }
 
     async fn prove_reserves(

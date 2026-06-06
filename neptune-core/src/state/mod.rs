@@ -130,8 +130,8 @@ use crate::VERSION;
 /// Conceptually** all reads and writes of application state
 /// require acquiring this lock.
 ///
-/// Having a single lock is useful for a few reasons:
-///  1. Enables write serialization over all application state.
+/// Having a single lock is useful for a few reasons.
+///  1. Enables write serialization over all application state. \
 ///     (blockchain, mempool, wallet, global flags)
 ///  2. Readers see a consistent view of data.
 ///  3. makes it easy to reason about locking

@@ -133,8 +133,8 @@ pub async fn alice_sends_to_bob_tritonverify() -> anyhow::Result<()> {
     ).await?;
 
     tracing::trace!["Alice proves the transfer"];
-    let tip_the = alice.gsl.lock(|gs| gs.chain.tip().hash()).await;
-    let (claim, proof) = proof_of_transfer::helper(alice.gsl.clone(), 0, 0, tip_the).await.unwrap();
+    // let tip_the = alice.gsl.lock(|gs| gs.chain.tip().hash()).await;
+    let (claim, proof) = proof_of_transfer::helper(alice.gsl.clone(), None, None, None).await.unwrap().1.pop().unwrap();
 
     tracing::trace!["Bob verifies the claim"];
     
@@ -186,7 +186,7 @@ pub async fn alice_sends_to_bob_tritonverify() -> anyhow::Result<()> {
     Ok(assert!(tasm_lib::triton_vm::verify(
         Default::default(),
         &claim,
-        &proof,
+        &proof.unwrap(),
     ), "Triton verification failed: the argument does not prove the claim"))
 }
 

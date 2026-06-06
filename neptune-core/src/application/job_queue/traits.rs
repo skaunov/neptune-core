@@ -3,19 +3,18 @@ use std::any::Any;
 use super::channels::JobCancelReceiver;
 use super::job_completion::JobCompletion;
 
-/// represents a job result, which can be any type.
+/// represents a job result, which can be any type
 pub trait JobResult: Any + Send + Sync {
     fn as_any(&self) -> &dyn Any;
     fn into_any(self: Box<Self>) -> Box<dyn Any>;
 }
 
-// represents any kind of job
+/// represents any kind of job
 #[async_trait::async_trait]
 pub trait Job: Send + Sync {
     fn is_async(&self) -> bool;
 
-    // note: we provide unimplemented default methods for
-    // run and run_async.  This is so that implementing types
+    // Note: we provide unimplemented default methods for run and run_async.  This is so that implementing types
     // only need to impl the appropriate method.
 
     fn run(&self, _rx: JobCancelReceiver) -> JobCompletion {
@@ -38,7 +37,7 @@ pub trait Job: Send + Sync {
         }
     }
 
-    /// implement this method to perform the work of the job.
+    /// implement this method to perform the work of the job
     async fn run_async(&self) -> Box<dyn JobResult> {
         unimplemented!()
     }

@@ -40,8 +40,8 @@ pub const PROOF_PADDED_HEIGHT_TOO_BIG_PROCESS_OFFSET_ERROR_CODE: i32 = 200;
 /// represents an error running a [ProverJob]
 #[derive(Debug, thiserror::Error)]
 pub enum ProverJobError {
-    /// Error code indicating that the processor table is too big. Does not
-    /// refer to the actual AET which may still exceed the user-defined limit.
+    /// Error code indicating that the processor table is too big. 
+    /// Does not refer to the actual AET which may still exceed the user-defined limit.
     #[error("triton-vm program complexity limit exceeded. result: {result}, limit: {limit}")]
     ProofComplexityLimitExceeded { limit: u32, result: u32 },
 
@@ -82,14 +82,12 @@ pub enum VmProcessError {
     )]
     ProofComplexityLimitExceeded { limit: u32, result: u32 },
 
-    // note: on unix an exit with no code indicates the process
-    // ended because of a signal, but this is not the case in
-    // windows, so cannot be relied upon. There doesn't appear to
-    // be any good cross-platform heuristic to determine if a process
-    // ended normally or was killed.
-    //
-    // *if* we could determine the process was externally killed then
-    // it would be reasonable to retry the job.
+    /// Note: on unix an exit with no code indicates the process
+    /// ended because of a signal, but this is not the case in windows, so cannot be relied upon. There doesn't appear to be any good cross-platform heuristic to determine if a process
+    /// ended normally or was killed.
+    ///
+    /// *if* we could determine the process was externally killed then
+    /// it would be reasonable to retry the job
     #[error(
         "out-of-process `neptune-prover` proving job terminated without exit code. \
         Possibly killed by OS. You might not have enough RAM to construct this \
@@ -176,14 +174,12 @@ impl ProverJob {
     ///
     /// To estimate the complexity, the job is run in the VM and the log-base-2
     /// of the cycle count is used as an estimate for the log-2-padded height.
-    /// This estimate is then compared against the max log-2-padded-height of
-    /// the job itself.
+    /// This estimate is then compared against the max log-2-padded-height of the job itself.
     ///
     /// Note that this estimate may be too small (but never too large). It is
     /// possible that the actual log-base-2 padded table height is larger
     /// because some other table besides the processor table dominates. In that
-    /// case, the out-of-process prover, where the actual check happens based on
-    /// the entire AET, will reject the job.
+    /// case, the out-of-process prover, where the actual check happens based on the entire AET, will reject the job.
     async fn check_if_allowed(&self) -> Result<(), ProverJobError> {
         tracing::debug!("job settings: {:?}", self.job_settings);
 
@@ -207,35 +203,20 @@ impl ProverJob {
         );
         maybe_write_debuggable_vm_state_to_disk(&vm_state);
 
-        // run program in VM
-        //
-        // this is sometimes fast enough for async, but other times takes 1+ seconds.
-        // As such we run it in spawn-blocking. Eventually it might make sense
-        // to move into the external process.
-        vm_state = {
-            let join_result = tokio::task::spawn_blocking(move || {
-                log_scope_duration!(fn_name!() + "::vm_state.run()");
-                let r = vm_state.run();
-                (vm_state, r)
-            })
-            .await;
-
-            let (vm_state_moved, run_result) = match join_result {
-                Ok(r) => r,
-                Err(e) if e.is_panic() => std::panic::resume_unwind(e.into_panic()),
-                Err(e) if e.is_cancelled() => {
-                    panic!("VM::run() task was cancelled unexpectedly. error: {e}")
-                }
-                Err(e) => panic!("unexpected error from VM::run() spawn-blocking task. {e}"),
-            };
-
-            if let Err(e) = run_result {
-                return Err(ProverJobError::TritonVmProverFailed(
-                    VmProcessError::TritonVmFailed(e),
-                ));
-            }
-            vm_state_moved
-        };
+        /* run program in VM
+        
+        This is sometimes fast enough for `async`, but other times takes 1+ seconds.
+        As such we run it in spawn-blocking. Eventually it might make sense
+        to move into the external process. */
+        vm_state = match tokio::task::spawn_blocking(move || {
+            log_scope_duration!(fn_name!() + "::vm_state.run()");
+            vm_state.run().map(|_| vm_state)
+        }).await {
+            Ok(res) => res.map_err(|e| ProverJobError::TritonVmProverFailed(VmProcessError::TritonVmFailed(e))),
+            Err(e) if e.is_panic() => std::panic::resume_unwind(e.into_panic()),
+            Err(e) if e.is_cancelled() => panic!("`VM::run()` task was cancelled unexpectedly. error: {e}"),
+            Err(e) => panic!("unexpected error from `VM::run()` spawn-blocking task. {e}"),
+        }?;
         assert_eq!(self.claim.program_digest, self.program.hash());
         assert_eq!(self.claim.output, vm_state.public_output);
 
@@ -294,24 +275,23 @@ impl ProverJob {
     /// Runs the `neptune-prover` out-of-process Triton VM prover.
     ///
     /// This method spawns child process and waits for either:
-    ///   1. the child to finish
+    ///   1. the child to finish,
     ///   2. a job-cancellation message.
     ///
-    /// It returns a Result<ProverProcessCompletion, _> indicating:
-    ///   1. Ok(Completion) - prover finished successfully (with a Proof)
-    ///   2. Ok(Cancelled) - job was cancelled
+    /// It returns a `Result<ProverProcessCompletion, _>`` indicating:
+    ///   1. Ok(Completion) - prover finished successfully (with a Proof),
+    ///   2. Ok(Cancelled) - job was cancelled,
     ///   3. Err(e) - an error occurred.
     ///
     /// If the job is cancelled while the child process is running then
     /// an attempt is made to kill the child process.  If this attempt
-    /// fails, the fn will panic.
+    /// fails, the `fn` will panic.
     ///
     /// The input to this process is a JSON-encoded [`NeptuneProverJob`] object,
     /// sent via stdin. The output is a bincode-serialized [`Proof`] object.
-    /// Stderr is piped to tracing-logs, with some superficial parsing to
-    /// activate the intended log level.
+    /// Stderr is piped to tracing-logs, with some superficial parsing to activate the intended log level.
     ///
-    /// The process result is only read if exit code is 0.
+    /// The process result is only read if exit code is `0`.
     /// A non-zero exit code or no code results in an error.
     pub async fn prove_out_of_process(
         &self,
@@ -321,14 +301,16 @@ impl ProverJob {
         let mut child = {
             let job_payload = serde_json::to_vec(&NeptuneProverJob::from(self.clone()))?;
 
-            let mut child = tokio::process::Command::new(Self::path_to_neptune_prover()?)
+            dbg!["**beeefore**"];
+            let mut child = tokio::process::Command::new(dbg![Self::path_to_neptune_prover()?])
                 .kill_on_drop(true) // extra insurance.
                 .stdin(Stdio::piped())
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped())
                 .spawn()?;
 
-            // Pipe stderr to matching tracing logs
+            dbg![&child.stderr];
+            // Pipe stderr to matching tracing logs.
             if let Some(stderr) = child.stderr.take() {
                 tokio::spawn(async move {
                     use tokio::io::AsyncBufReadExt;
@@ -346,7 +328,7 @@ impl ProverJob {
                         } else if let Some(suffix) = msg.strip_prefix("WARN:") {
                             tracing::warn!("neptune-prover: {}", &suffix);
                         } else {
-                            // Default fallback for raw panics or untagged output
+                            // Default fallback for raw panics or untagged output.
                             tracing::trace!("neptune-prover (raw): {}", msg);
                         }
                     }
@@ -355,10 +337,10 @@ impl ProverJob {
 
             let mut child_stdin = child.stdin.take().ok_or(VmProcessError::StdinUnavailable)?;
 
-            // Pipe the entire JSON payload at once
+            // Pipe the entire JSON payload at once.
             child_stdin.write_all(&job_payload).await?;
 
-            // Drop stdin to signal EOF to the child process
+            // `Drop` stdin to signal EOF to the child process.
             drop(child_stdin);
 
             child
@@ -413,7 +395,6 @@ impl ProverJob {
                         }
 
                     }
-
                     None => Err(VmProcessError::NoExitCode),
                 }
             },
@@ -432,15 +413,14 @@ impl ProverJob {
     ///
     /// `neptune-prover` must reside in the same directory as `neptune-core`.
     /// This colocation enables debug builds of `neptune-core` to invoke debug
-    /// builds of `neptune-prover`. Also works for release build, and for a
-    /// package/distribution.
+    /// builds of `neptune-prover`. Also works for release build, and for a package/distribution.
     ///
-    /// note: we do not verify that the path exists. That will occur anyway
+    /// Note: we do not verify that the path exists. That will occur anyway
     /// when `neptune-prover` is executed.
     fn path_to_neptune_prover() -> Result<std::path::PathBuf, VmProcessError> {
         let mut path = std::env::current_exe()?;
 
-        // Handle the ".exe" extension for Windows automatically
+        // Handle the ".exe" extension for Windows automatically.
         let extension = std::env::consts::EXE_EXTENSION;
         let bin_name = if extension.is_empty() {
             "neptune-prover".to_string()
@@ -472,11 +452,11 @@ impl Job for ProverJob {
         true
     }
 
-    // we override the default impl of this method in order to kill the external
+    // We override the default impl of this method in order to kill the external
     // proving job when a job is cancelled.
     //
     // It is not strictly necessary to do so.  We could just rely on the handy
-    // tokio::process::Command::kill_on_drop(true) setting, by which the tokio
+    // `tokio::process::Command::kill_on_drop(true)` setting, by which the Tokio
     // executor kills the process in the background after the child handle is
     // dropped.  However in that case we would not know when or if the process
     // is actually killed.  It can take seconds to kill a prover process, so if
@@ -518,16 +498,14 @@ mod process_util {
     use tokio::io::AsyncReadExt;
     use tokio::process::Child;
 
-    // This fn is a slightly modified copy of
-    // tokio::process::Child::wait_with_output().
+    // This `fn` is a slightly modified copy of `tokio::process::Child::wait_with_output()`.
     //
-    // As of tokio 1.43.0, Child::wait_with_output() takes `self` argument,
-    // which prevents use within a select along with Child::kill().  The docs
-    // for Child::kill() demonstrate using a select!() to Child::wait() for a
-    // process and optionally kill() it if a message is received.  However,
-    // Child::wait_with_output() used in this manner results in a compile error
+    // As of tokio `1.43.0`, `Child::wait_with_output()` takes `self` argument,
+    // which prevents use within a `select` along with Child::kill().  The docs
+    // for `Child::kill()` demonstrate using a `select!()` to `Child::wait()` for a process and optionally kill() it if a message is received.  However,
+    // `Child::wait_with_output()` used in this manner results in a compile error
     // due to the `self` parameter, which differs from `&mut self` that
-    // Child::wait() takes.
+    // `Child::wait()` takes.
     //
     // The modified fn below takes `&mut Child` and has some minor mods so it
     // does not rely on internal tokio functions.
@@ -560,7 +538,7 @@ mod process_util {
 
         let (status, stdout, stderr) = tokio::try_join!(child.wait(), stdout_fut, stderr_fut)?;
 
-        // Drop happens after `try_join` due to <https://github.com/tokio-rs/tokio/issues/4309>
+        // Drop happens after `try_join` due to <https://github.com/tokio-rs/tokio/issues/4309>.
         drop(stdout_pipe);
         drop(stderr_pipe);
 

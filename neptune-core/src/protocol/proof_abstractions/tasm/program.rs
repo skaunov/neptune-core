@@ -143,8 +143,7 @@ pub(crate) async fn prove_triton_program(
 }
 
 /// options for executing the `triton-vm` proving job
-#[derive(Clone, Debug)]
-#[cfg_attr(test, derive(Default))]
+#[derive(Clone, Debug, Default)]
 pub struct TritonVmProofJobOptions {
     /// priority of this job in the job-queue
     ///
@@ -158,8 +157,7 @@ pub struct TritonVmProofJobOptions {
     pub job_settings: ProverJobSettings,
 
     /// :Cancellation: It is possible to cancel a proving-job by:
-    /// 1. create a [tokio::sync::watch] channel and set the receiver in the
-    ///    `cancel_job_rx` field,
+    /// 1. create a [tokio::sync::watch] channel and set the receiver in the `cancel_job_rx` field,
     /// 2. call `send()` on the channel sender to cancel the job.
     pub cancel_job_rx: Option<tokio::sync::watch::Receiver<()>>,
 }

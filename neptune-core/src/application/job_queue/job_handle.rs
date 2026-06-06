@@ -25,7 +25,9 @@ pub struct JobHandle {
     cancel_tx: JobCancelSender,
 }
 impl JobHandle {
-    // private instantiation fn.  only for use by JobQueue
+    /// Private instantiation `fn`.  
+    /// 
+    /// only for use by `JobQueue`
     pub(super) fn new(
         job_id: JobId,
         result_rx: JobResultReceiver,
@@ -38,17 +40,17 @@ impl JobHandle {
         }
     }
 
-    // indicates if job has finished processing or not.
+    // indicates if job has finished processing or not
     //
-    // returns true if job completed normally or was cancelled or panicked.
+    // returns `true` if job completed normally or was cancelled or panicked
     //
-    // returns false if job is still waiting in the queue or is presently
-    // processing.
+    // returns `false` if job is still waiting in the queue or is presently
+    // processing
     pub fn is_finished(&self) -> bool {
         self.cancel_tx.is_closed()
     }
 
-    /// sends cancel message to job and returns immediately.
+    /// sends cancel message to job and returns immediately
     ///
     /// note: await the JobHandle after calling `cancel()` to ensure the job has
     /// ended and obtain a [JobCompletion]
@@ -81,8 +83,7 @@ impl JobHandle {
     /// Sometimes it is necessary to listen for an application message that
     /// the job needs to cancel.  This can be achieved with tokio::select!{}
     ///
-    /// Example:
-    ///
+    /// Example.
     /// ```
     /// use neptune_cash::application::job_queue::JobQueue;
     /// use neptune_cash::application::job_queue::JobCompletion;
@@ -134,13 +135,12 @@ impl JobHandle {
     }
 }
 
-// we implement Future for JobHandle so that a JobHandle can be
-// directly awaited (like a tokio JoinHandle).
+// we implement Future for `JobHandle` so that a `JobHandle` can be directly awaited (like a Tokio `JoinHandle`)
 impl Future for JobHandle {
     type Output = Result<JobCompletion, JobHandleError>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        // Directly poll the underlying result_rx
+        // directly poll the underlying result_rx
         let result_rx = &mut self.get_mut().result_rx;
         Pin::new(result_rx).poll(cx).map_err(|e| e.into())
     }
@@ -148,7 +148,7 @@ impl Future for JobHandle {
 
 impl Drop for JobHandle {
     fn drop(&mut self) {
-        tracing::debug!("JobHandle dropping for job: {}", self.job_id);
+        tracing::debug!("`JobHandle` dropping for job: {}", self.job_id);
         if !self.cancel_tx.is_closed() {
             let _ = self.cancel();
         }

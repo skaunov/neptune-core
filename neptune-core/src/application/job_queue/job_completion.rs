@@ -23,7 +23,7 @@ impl fmt::Debug for JobCompletion {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             JobCompletion::Finished(result) => {
-                // Attempt to downcast and debug if the underlying JobResult implements Debug
+                // Attempt to downcast and debug if the underlying `JobResult` implements `Debug`.
                 if let Some(debuggable) = result
                     .as_any()
                     .downcast_ref::<Box<dyn fmt::Debug + Send + Sync>>()

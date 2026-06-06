@@ -30,8 +30,7 @@ const NEPTUNE_PROVER_PROXY_ENV_VAR: &str = "NEPTUNE_PROVER_PROXY";
 /// a public function exposed by triton_vm to overwrite the LDE cache config --
 /// just to make sure it was set correctly.
 ///
-/// This function may not be called more than once and may not be called from a
-/// concurrent or multi-threaded context.
+/// This function may not be called more than once and may not be called from a concurrent or multi-threaded context.
 fn set_environment_variables(env_vars: &[(String, String)]) {
     // Set environment variables for this spawned process only, does not apply
     // globally. Documentation of `set_var` shows it's for the currently
@@ -88,8 +87,7 @@ fn triton_vm_aet(
     aet
 }
 
-/// Execute the proof job in the current process (as opposed to delegating it to
-/// another one).
+/// Execute the proof job in the current process (as opposed to delegating it to another one).
 fn execute_prover_job(job: NeptuneProverJob) -> Proof {
     let max_log2_padded_height = job.max_log2_padded_height;
     let claim = job.claim.clone();
@@ -104,20 +102,20 @@ fn execute_prover_job(job: NeptuneProverJob) -> Proof {
             job.max_log2_padded_height.unwrap()
         );
 
-        // Exit with a specific error code
+        // Exit with a specific error.
         std::process::exit(
             PROOF_PADDED_HEIGHT_TOO_BIG_PROCESS_OFFSET_ERROR_CODE + i32::from(log2_padded_height),
         );
     }
 
-    // Set environment variables for this specific padded height
+    // Set environment variables for this specific padded height.
     let env_vars = env_vars
         .get(&log2_padded_height)
         .map(|x| x.to_owned())
         .unwrap_or_default();
     set_environment_variables(&env_vars);
 
-    // run with a low priority so that neptune-core can remain responsive.
+    // Run with a low priority so that `neptune-core` can remain responsive.
     set_current_thread_priority(ThreadPriority::Min).unwrap();
 
     Stark::default().prove(&claim, &aet).unwrap()
@@ -215,7 +213,7 @@ mod neptune_prover_tests {
 
         assert!(triton_vm::verify(Stark::default(), &claim, &proof));
 
-        // Verify that env variables were actually set
+        // Verify that env variables were actually set.
         assert_eq!(
             "no_cache",
             std::env::var(ENV_VAR_LDE_CACHE).expect("Env variable for LDE trace must be set")

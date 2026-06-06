@@ -706,9 +706,9 @@ pub trait RpcApi: Sync + Send {
     /// keeping sensitive data hidden in the proof.
     async fn prove_an_transfer(
         &self,
-        tx_ix: u64,
-        utxo_ix: usize,
-        block: Digest,
+        tx_ix: Option<u64>,
+        utxo_ix: Option<usize>,
+        block: Option<Digest>,
     ) -> RpcResult<ProveAnTransferResponse> {
         self.prove_an_transfer_call(ProveAnTransferRequest {
             tx_ix,

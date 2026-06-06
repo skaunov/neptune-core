@@ -1319,7 +1319,7 @@ impl RpcApi for RpcServer {
     }
 
     async fn prove_an_transfer_call(&self, request: ProveAnTransferRequest) -> RpcResult<ProveAnTransferResponse> {
-        let (claim, proof) = crate::util_types::proof_of_transfer::helper(
+        let (block, data) = crate::util_types::proof_of_transfer::helper(
             self.state.clone(),
             request.tx_ix,
             request.utxo_ix,
@@ -1330,10 +1330,9 @@ impl RpcApi for RpcServer {
             data: None,
         }))?;
 
-        Ok(ProveAnTransferResponse {
-            claim,
-            proof,
-        })
+        Ok(ProveAnTransferResponse {block, data: data.into_iter().map(
+            |(claim, proof)| (claim, proof.map_err(|e| e.to_string()))
+        ).collect()})
     }
 
     async fn triton_verify_call(&self, request: TritonVerifyRequest) -> RpcResult<TritonVerifyResponse> {
@@ -3043,14 +3042,14 @@ pub mod tests {
         // test that the method exists and can be called (even if it fails due to no data)
         let result = rpc_server
             .prove_an_transfer_call(ProveAnTransferRequest {
-                tx_ix: 0,
-                utxo_ix: 0,
-                block: tasm_lib::prelude::Digest::default(),
+                tx_ix: Some(0),
+                utxo_ix: Some(0),
+                block: Some(tasm_lib::prelude::Digest::default()),
             })
             .await;
 
         // We expect this to fail since there's no actual transaction data,
-        // but the method should be callable and return a proper error
+        // but the method should be callable and return a proper error.
         assert!(result.is_err());
         match result.unwrap_err() {
             crate::application::json_rpc::core::api::rpc::RpcError::Server(json_err) => {
@@ -3066,9 +3065,9 @@ pub mod tests {
 
         // verify request/response types work correctly
         let request = ProveAnTransferRequest {
-            tx_ix: 42,
-            utxo_ix: 7,
-            block: tasm_lib::prelude::Digest::default(),
+            tx_ix: Some(42),
+            utxo_ix: Some(7),
+            block: Some(tasm_lib::prelude::Digest::default()),
         };
 
         // verify the request can be serialized/deserialized (basic JSON-RPC compatibility)
@@ -3080,21 +3079,21 @@ pub mod tests {
         assert_eq!(request.block, deserialized.block);
         
         // verify response type works
-        let response = ProveAnTransferResponse {
-            claim: tasm_lib::triton_vm::proof::Claim {
+        let response = ProveAnTransferResponse {block: request.block.unwrap(), data: vec![(
+            tasm_lib::triton_vm::proof::Claim {
                 program_digest: tasm_lib::prelude::Digest::default(),
                 version: 1,
                 input: vec![],
                 output: vec![],
             },
-            proof: crate::api::export::NeptuneProof::invalid(),
-        };
+            Ok(crate::api::export::NeptuneProof::invalid())
+        )]};
         
         let serialized_response = serde_json::to_string(&response).unwrap();
         let deserialized_response: ProveAnTransferResponse = serde_json::from_str(&serialized_response).unwrap();
         
-        assert_eq!(response.claim.program_digest, deserialized_response.claim.program_digest);
-        assert_eq!(response.claim.version, deserialized_response.claim.version);
+        assert_eq!(response.data[0].0.program_digest, deserialized_response.data[0].0.program_digest);
+        assert_eq!(response.data[0].0.version, deserialized_response.data[0].0.version);
     }
 
     #[apply(shared_tokio_runtime)]
@@ -3125,9 +3124,9 @@ pub mod tests {
         // TODO: Add more comprehensive test with real transaction data once API access is sorted out
         let result = rpc_server
             .prove_an_transfer_call(ProveAnTransferRequest {
-                tx_ix: 0, // First transaction in the block
-                utxo_ix: 0, // First UTXO
-                block: tasm_lib::prelude::Digest::default(), // Use default digest for now
+                tx_ix: Some(0), // First transaction in the block
+                utxo_ix: Some(0), // First UTXO
+                block: Some(tasm_lib::prelude::Digest::default()), // Use default digest for now
             })
             .await;
 
@@ -3207,9 +3206,9 @@ pub mod tests {
         let fake_block = tasm_lib::prelude::Digest::new([tasm_lib::triton_vm::prelude::BFieldElement::new(1); 5]);
         let result = rpc_server
             .prove_an_transfer_call(ProveAnTransferRequest {
-                tx_ix: 999,
-                utxo_ix: 999,
-                block: fake_block,
+                tx_ix: Some(999),
+                utxo_ix: Some(999),
+                block: Some(fake_block),
             }).await;
 
         assert!(result.is_err());
@@ -3232,9 +3231,9 @@ pub mod tests {
 
         let result = rpc_server
             .prove_an_transfer_call(ProveAnTransferRequest {
-                tx_ix: 0,
-                utxo_ix: 999,
-                block: genesis_hash,
+                tx_ix: Some(0),
+                utxo_ix: Some(999),
+                block: Some(genesis_hash),
             })
             .await;
 

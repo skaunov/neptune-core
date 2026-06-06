@@ -12,7 +12,8 @@ use crate::protocol::consensus::transaction::BFieldCodec;
 use crate::triton_vm::prelude::LabelledInstruction;
 use crate::BFieldElement;
 
-/// defines Mock proof behaviors. (private)
+/// defines Mock proof behaviors 
+/// (private)
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, BFieldCodec)]
 enum MockProofBehavior {
     ValidMock,

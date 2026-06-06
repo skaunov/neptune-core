@@ -7,12 +7,14 @@ use std::io::stdout;
 use std::io::Write;
 use std::net::Ipv4Addr;
 use std::net::SocketAddr;
+use std::path::Path;
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::time::Duration;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
+use anyhow::anyhow;
 use anyhow::bail;
 use anyhow::ensure;
 use anyhow::Result;
@@ -22,8 +24,10 @@ use clap_complete::generate;
 use clap_complete::Shell;
 use itertools::Itertools;
 use neptune_cash::api::export::BlockHeight;
+use neptune_cash::api::export::NeptuneProof;
 use neptune_cash::api::export::Timestamp;
 use neptune_cash::api::tx_initiation::builder::tx_output_list_builder::OutputFormat;
+use neptune_cash::application::config::data_directory;
 use neptune_cash::application::config::data_directory::DataDirectory;
 use neptune_cash::application::config::network::Network;
 use neptune_cash::application::rpc::auth;
@@ -80,6 +84,9 @@ struct Config {
     #[clap(long)]
     data_dir: Option<PathBuf>,
 
+    #[clap(long)]
+    network: Option<Network>,
+
     #[clap(subcommand)]
     command: Command,
 }
@@ -126,7 +133,7 @@ async fn main() -> Result<()> {
             }
 
             println!(
-                "Wallet stored in: {}\nMake sure you also see this path if you run the neptune-core client",
+                "Wallet stored in: {}\nMake sure you also see this path if you run the `neptune-core` client",
                 wallet_file_context.wallet_secret_path.display()
             );
 
@@ -216,9 +223,6 @@ async fn main() -> Result<()> {
         Command::Wallet(WalletCommand::NthReceivingAddress { network, index }) => {
             return print_nth_receiving_address(*network, args.data_dir.clone(), *index);
         }
-        Command::Wallet(WalletCommand::PremineReceivingAddress { network }) => {
-            return print_nth_receiving_address(*network, args.data_dir.clone(), 0);
-        }
         Command::Wallet(WalletCommand::ShamirCombine { t, network }) => {
             let wallet_dir =
                 DataDirectory::get(args.data_dir.clone(), *network)?.wallet_directory_path();
@@ -230,118 +234,117 @@ async fn main() -> Result<()> {
                     "Cannot import wallet from Shamir secret shares; wallet file {} already exists. Move it to another location (or remove it) to perform this operation.",
                     wallet_file.display()
                 );
-                return Ok(());
-            }
+            } else {
+                // prompt user for all shares
+                let mut shares = vec![];
+                let capture_integers = Regex::new(r"^(\d+)\/(\d+)$").unwrap();
+                while shares.len() != *t {
+                    println!("Enter share index (\"i/n\"): ");
 
-            // prompt user for all shares
-            let mut shares = vec![];
-            let capture_integers = Regex::new(r"^(\d+)\/(\d+)$").unwrap();
-            while shares.len() != *t {
-                println!("Enter share index (\"i/n\"): ");
+                    let mut buffer = "".to_string();
+                    std::io::stdin()
+                        .read_line(&mut buffer)
+                        .expect("Cannot accept user input.");
+                    let buffer = buffer.trim();
 
-                let mut buffer = "".to_string();
-                std::io::stdin()
-                    .read_line(&mut buffer)
-                    .expect("Cannot accept user input.");
-                let buffer = buffer.trim();
+                    let (before_slash, after_slash) =
+                        if let Some(captures) = capture_integers.captures(buffer) {
+                            let before_slash = captures.get(1).unwrap().as_str();
+                            let after_slash = captures.get(2).unwrap().as_str();
 
-                let (before_slash, after_slash) =
-                    if let Some(captures) = capture_integers.captures(buffer) {
-                        let before_slash = captures.get(1).unwrap().as_str();
-                        let after_slash = captures.get(2).unwrap().as_str();
+                            (before_slash, after_slash)
+                        } else {
+                            println!("Could not parse index. Please try again.");
+                            continue;
+                        };
 
-                        (before_slash, after_slash)
-                    } else {
-                        println!("Could not parse index. Please try again.");
-                        continue;
-                    };
-
-                let i = match usize::from_str(before_slash) {
-                    Ok(i) => i,
-                    Err(_e) => {
-                        println!("Failed to parse `{before_slash}`. Please try again.");
-                        continue;
-                    }
-                };
-
-                let n = match usize::from_str(after_slash) {
-                    Ok(i) => i,
-                    Err(_e) => {
-                        println!("Failed to parse `{after_slash}`. Please try again.");
-                        continue;
-                    }
-                };
-
-                if i == 0 {
-                    println!("Index i == 0 is invalid. Please try again.");
-                    continue;
-                }
-
-                if i > n {
-                    println!("Index i = {i} > n = {n} is disallowed. Please try again.");
-                    continue;
-                }
-
-                if shares.iter().any(|(j, _)| *j == i) {
-                    println!("Index i = {i} is a duplicate; cannot have duplicates.");
-                    println!(
-                        "Already have shares with indices {{{}}}/{n}",
-                        shares.iter().map(|(j, _)| *j).sorted().join(",")
-                    );
-                    println!("Please try again.");
-                    continue;
-                }
-
-                loop {
-                    println!("Enter seed phrase for key share {i}/{n}:");
-                    let key = match enter_seed_phrase_dialog() {
-                        Ok(key) => key,
-                        Err(e) => {
-                            println!("Failed to process seed phrase.");
-                            eprintln!("Error: {e}");
-                            println!("Please try again.");
+                    let i = match usize::from_str(before_slash) {
+                        Ok(i) => i,
+                        Err(_e) => {
+                            println!("Failed to parse `{before_slash}`. Please try again.");
                             continue;
                         }
                     };
-                    shares.push((i, key));
-                    break;
+
+                    let n = match usize::from_str(after_slash) {
+                        Ok(i) => i,
+                        Err(_e) => {
+                            println!("Failed to parse `{after_slash}`. Please try again.");
+                            continue;
+                        }
+                    };
+
+                    if i == 0 {
+                        println!("Index i == 0 is invalid. Please try again.");
+                        continue;
+                    }
+
+                    if i > n {
+                        println!("Index i = {i} > n = {n} is disallowed. Please try again.");
+                        continue;
+                    }
+
+                    if shares.iter().any(|(j, _)| *j == i) {
+                        println!("Index i = {i} is a duplicate; cannot have duplicates.");
+                        println!(
+                            "Already have shares with indices {{{}}}/{n}",
+                            shares.iter().map(|(j, _)| *j).sorted().join(",")
+                        );
+                        println!("Please try again.");
+                        continue;
+                    }
+
+                    loop {
+                        println!("Enter seed phrase for key share {i}/{n}:");
+                        let key = match enter_seed_phrase_dialog() {
+                            Ok(key) => key,
+                            Err(e) => {
+                                println!("Failed to process seed phrase.");
+                                eprintln!("Error: {e}");
+                                println!("Please try again.");
+                                continue;
+                            }
+                        };
+                        shares.push((i, key));
+                        break;
+                    }
+                    println!();
+                    println!(
+                        "Have shares {{{}}}/{n}.\n",
+                        shares.iter().map(|(j, _)| *j).sorted().join(",")
+                    );
                 }
-                println!();
-                println!(
-                    "Have shares {{{}}}/{n}.\n",
-                    shares.iter().map(|(j, _)| *j).sorted().join(",")
-                );
+
+                let original_secret = match SecretKeyMaterial::combine_shamir(*t, shares) {
+                    Ok(key) => {
+                        println!("Shamir recombination successful.");
+                        key
+                    }
+                    Err(e) => {
+                        println!("Could not recombine Shamir secret shares.");
+                        eprintln!("Error: {e}");
+                        return Ok(());
+                    }
+                };
+
+                // create wallet and save to disk
+                let wallet_secret = WalletFile::new(original_secret);
+
+                // wallet file does not exist yet (we verified that upstairs) so
+                // create it and save
+                println!("Saving wallet to disk at {} ...", wallet_file.display());
+                DataDirectory::create_dir_if_not_exists(&wallet_dir).await?;
+                match wallet_secret.save_to_disk(&wallet_file) {
+                    Err(e) => {
+                        bail!("Could not save wallet to disk. {e}");
+                    }
+                    Ok(_) => {
+                        println!("Success.");
+                    }
+                }
             }
 
-            let original_secret = match SecretKeyMaterial::combine_shamir(*t, shares) {
-                Ok(key) => {
-                    println!("Shamir recombination successful.");
-                    key
-                }
-                Err(e) => {
-                    println!("Could not recombine Shamir secret shares.");
-                    eprintln!("Error: {e}");
-                    return Ok(());
-                }
-            };
-
-            // create wallet and save to disk
-            let wallet_secret = WalletFile::new(original_secret);
-
-            // wallet file does not exist yet (we verified that upstairs) so
-            // create it and save
-            println!("Saving wallet to disk at {} ...", wallet_file.display());
-            DataDirectory::create_dir_if_not_exists(&wallet_dir).await?;
-            match wallet_secret.save_to_disk(&wallet_file) {
-                Err(e) => {
-                    bail!("Could not save wallet to disk. {e}");
-                }
-                Ok(_) => {
-                    println!("Success.");
-                }
-            }
-
-            return Ok(());
+            Ok(())
         }
         Command::Wallet(WalletCommand::ShamirShare { t, n, network }) => {
             if *n < 1 {
@@ -402,7 +405,7 @@ async fn main() -> Result<()> {
                 println!();
             }
 
-            return Ok(());
+            Ok(())
         }
         Command::Wallet(WalletCommand::IndexOf { address, network }) => {
             // Parse on client.
@@ -423,691 +426,738 @@ async fn main() -> Result<()> {
             // Iterate until match.
             find_index_of(full_or_abbreviated_address, wallet_entropy, *network).await?;
 
-            return Ok(());
+            Ok(())
         }
-        _ => {}
-    }
+        _ => {
+            // all other operations need a connection to the server
+            if let Ok(transport) = tarpc::serde_transport::tcp::connect(SocketAddr::new(std::net::IpAddr::V4(Ipv4Addr::LOCALHOST), args.port), Json::default).await {
+                let client = RPCClient::new(client::Config::default(), transport).spawn();
+                let ctx = context::current();
 
-    // all other operations need a connection to the server
-    let server_socket = SocketAddr::new(std::net::IpAddr::V4(Ipv4Addr::LOCALHOST), args.port);
-    let Ok(transport) = tarpc::serde_transport::tcp::connect(server_socket, Json::default).await
-    else {
-        eprintln!("This command requires a connection to `neptune-core`, but that connection could not be established. Is `neptune-core` running?");
-        return Ok(());
-    };
-    let client = RPCClient::new(client::Config::default(), transport).spawn();
-    let ctx = context::current();
-
-    let auth::CookieHint {
-        data_directory,
-        network,
-    } = match get_cookie_hint(&client, &args).await {
-        Ok(h) => h,
-        Err(e) => {
-            eprintln!("{e}");
-            eprintln!(
-                "Could not ping neptune-core. Do configurations match? Or is it still starting up?"
-            );
-            std::process::exit(1);
-        }
-    };
-
-    let token: auth::Token = match auth::Cookie::try_load(&data_directory).await {
-        Ok(t) => t,
-        Err(e) => {
-            eprintln!("Unable to load RPC auth cookie. error = {e}");
-            std::process::exit(2)
-        }
-    }
-    .into();
-
-    match args.command {
-        Command::Completions
-        | Command::Wallet(
-            WalletCommand::GenerateWallet { .. }
-            | WalletCommand::WhichWallet { .. }
-            | WalletCommand::ExportSeedPhrase { .. }
-            | WalletCommand::ImportSeedPhrase { .. }
-            | WalletCommand::ShamirCombine { .. }
-            | WalletCommand::ShamirShare { .. }
-            | WalletCommand::NthReceivingAddress { .. }
-            | WalletCommand::PremineReceivingAddress { .. }
-            | WalletCommand::IndexOf { .. },
-        ) => {
-            unreachable!("Case should be handled earlier.")
-        }
-
-        /******** READ STATE ********/
-        Command::Wallet(WalletCommand::ListCoins) => {
-            let list = client.list_own_coins(ctx, token).await??;
-            let now = Timestamp::now();
-            println!("{}", CoinWithPossibleTimeLock::report(&list, now));
-        }
-        Command::Blockchain(BlockchainCommand::Network) => {
-            // we already queried the network above.
-            println!("{network}")
-        }
-        Command::Network(NetworkCommand::OwnListenAddressForPeers) => {
-            let own_listen_address = client.own_listen_address_for_peers(ctx, token).await??;
-            match own_listen_address {
-                Some(addr) => println!("{addr}"),
-                None => println!("No listen address configured"),
-            }
-        }
-        Command::Network(NetworkCommand::OwnInstanceId) => {
-            let val = client.own_instance_id(ctx, token).await??;
-            println!("{val}")
-        }
-        Command::Blockchain(BlockchainCommand::BlockHeight) => {
-            let block_height = client.block_height(ctx, token).await??;
-            println!("Block height: {block_height}")
-        }
-        Command::Blockchain(BlockchainCommand::BlockInfo { block_selector }) => {
-            let data = client.block_info(ctx, token, block_selector).await??;
-            match data {
-                Some(block_info) => println!("{block_info}"),
-                None => println!("Not found"),
-            }
-        }
-        Command::Blockchain(BlockchainCommand::BlockDigestsByHeight { height }) => {
-            let digests = client
-                .block_digests_by_height(ctx, token, height.into())
-                .await??;
-            for digest in digests {
-                println!("{digest:x}");
-            }
-        }
-        Command::Mining(MiningCommand::BestBlockProposal) => {
-            let best_proposal = client.best_proposal(ctx, token).await??;
-            match best_proposal {
-                Some(block_info) => println!("{block_info}"),
-                None => println!("Not found"),
-            }
-        }
-        Command::Wallet(WalletCommand::Confirmations) => {
-            let val = client.confirmations(ctx, token).await??;
-            match val {
-                Some(confs) => println!("{confs}"),
-                None => println!("Wallet has not received any ingoing transactions yet"),
-            }
-        }
-        Command::Network(NetworkCommand::PeerInfo) => {
-            let peers = client.peer_info(ctx, token).await??;
-            println!("{} connected peers", peers.len());
-            println!("{}", serde_json::to_string(&peers)?);
-        }
-        Command::Network(NetworkCommand::AllPunishedPeers) => {
-            let peer_sanctions = client.all_punished_peers(ctx, token).await??;
-            for (ip, sanction) in peer_sanctions {
-                let standing = sanction.standing;
-                let latest_sanction_str = match sanction.latest_punishment {
-                    Some((sanction, _timestamp)) => sanction.to_string(),
-                    None => String::default(),
-                };
-                println!("{ip}\nstanding: {standing}\nlatest sanction: {latest_sanction_str} \n\n");
-            }
-        }
-        Command::Blockchain(BlockchainCommand::TipDigest) => {
-            let head_hash = client
-                .block_digest(
-                    ctx,
-                    token,
-                    BlockSelector::Special(BlockSelectorLiteral::Tip),
-                )
-                .await??
-                .unwrap_or_default();
-            println!("{head_hash:x}");
-        }
-        Command::Blockchain(BlockchainCommand::LatestTipDigests { n }) => {
-            let head_hashes = client.latest_tip_digests(ctx, token, n).await??;
-            for hash in head_hashes {
-                println!("{hash:x}");
-            }
-        }
-        Command::Blockchain(BlockchainCommand::TipHeader) => {
-            let val = client
-                .header(
-                    ctx,
-                    token,
-                    BlockSelector::Special(BlockSelectorLiteral::Tip),
-                )
-                .await??
-                .expect("Tip header should be found");
-            println!("{val}")
-        }
-        Command::Blockchain(BlockchainCommand::Header { block_selector }) => {
-            let res = client.header(ctx, token, block_selector).await??;
-            if let Some(res) = res {
-                println!("{res}");
-            } else {
-                println!("Block did not exist in database.");
-            }
-        }
-        Command::Blockchain(BlockchainCommand::RevalidateHistory { first, last }) => {
-            let tip_height = client.block_height(ctx, token).await??;
-            let first = first.map(BlockHeight::from).unwrap_or_default();
-            let last = last.map(BlockHeight::from).unwrap_or(tip_height);
-            println!(
-                "Re-validating block range {first}..={last} ...\
-             Check the node's log for the result."
-            );
-            let _ = client.revalidate_history(ctx, token, first, last).await;
-        }
-        Command::Wallet(WalletCommand::ConfirmedAvailableBalance) => {
-            let val = client.confirmed_available_balance(ctx, token).await??;
-            println!("{val}");
-        }
-        Command::Wallet(WalletCommand::UnconfirmedAvailableBalance) => {
-            let val = client.unconfirmed_available_balance(ctx, token).await??;
-            println!("{val}");
-        }
-        Command::Wallet(WalletCommand::WalletStatus { json, table }) => {
-            let wallet_status: WalletStatus = client.wallet_status(ctx, token).await??;
-            let exported_string = if json {
-                WalletStatusExportFormat::Json.export(&wallet_status)
-            } else if table {
-                WalletStatusExportFormat::Table.export(&wallet_status)
-            } else {
-                WalletStatusExportFormat::Json.export(&wallet_status)
-            };
-            println!("{exported_string}");
-        }
-        Command::Wallet(WalletCommand::NumExpectedUtxos) => {
-            let num = client.num_expected_utxos(ctx, token).await??;
-            println!("Found a total of {num} expected UTXOs in the database");
-        }
-        Command::Wallet(WalletCommand::NextReceivingAddress) => {
-            let receiving_address = client
-                .next_receiving_address(ctx, token, KeyType::Pokolen)
-                .await??;
-            println!("{}", receiving_address.to_display_bech32m(network).unwrap())
-        }
-        Command::Wallet(WalletCommand::GetDerivationIndex { key_type }) => {
-            let derivation_index = client.get_derivation_index(ctx, token, key_type).await??;
-            println!("{derivation_index}");
-        }
-        Command::Wallet(WalletCommand::SetDerivationIndex {
-            key_type,
-            derivation_index,
-        }) => {
-            client
-                .set_derivation_index(ctx, token, key_type, derivation_index)
-                .await??;
-            println!("done");
-        }
-        Command::Mempool(MempoolCommand::MempoolTxCount) => {
-            let count: usize = client.mempool_tx_count(ctx, token).await??;
-            println!("{count}");
-        }
-        Command::Mempool(MempoolCommand::MempoolSize) => {
-            let size_in_bytes: usize = client.mempool_size(ctx, token).await??;
-            println!("{size_in_bytes} bytes");
-        }
-        Command::Mempool(MempoolCommand::ListMempoolTransactionIds) => {
-            let txids = client.mempool_tx_ids(ctx, token).await??;
-            println!("{}", txids.iter().join("\n"));
-        }
-
-        /******** BLOCKCHAIN STATISTICS ********/
-        Command::Statistics(StatisticsCommand::BlockIntervals {
-            last_block,
-            max_num_blocks,
-        }) => {
-            let data = client
-                .block_intervals(ctx, token, last_block, max_num_blocks)
-                .await??;
-            match data {
-                Some(intervals) => {
-                    println!(
-                        "{}",
-                        intervals
-                            .iter()
-                            .map(|(height, interval)| format!("{height}: {interval}"))
-                            .join("\n")
-                    )
-                }
-                None => println!("Not found"),
-            }
-        }
-
-        Command::Statistics(StatisticsCommand::BlockDifficulties {
-            last_block,
-            max_num_blocks,
-        }) => {
-            let difficulties = client
-                .block_difficulties(ctx, token, last_block, max_num_blocks)
-                .await??;
-
-            println!(
-                "{}",
-                difficulties
-                    .iter()
-                    .map(|(height, difficulty)| format!("{height}: {difficulty}"))
-                    .join("\n")
-            )
-        }
-
-        Command::Statistics(StatisticsCommand::CirculatingSupply) => {
-            let circulating_supply = client.circulating_supply(ctx, token).await??;
-            println!("{}", circulating_supply.display_lossless());
-        }
-
-        Command::Statistics(StatisticsCommand::MaxSupply) => {
-            let max_supply = client.max_supply(ctx, token).await??;
-            println!("{}", max_supply.display_lossless());
-        }
-
-        Command::Statistics(StatisticsCommand::BurnedSupply) => {
-            let burned_supply = client.burned_supply(ctx, token).await??;
-            println!("{}", burned_supply.display_lossless());
-        }
-
-        /******** PEER INTERACTIONS ********/
-        Command::Mempool(MempoolCommand::BroadcastMempoolTransactions) => {
-            println!("Broadcasting transaction-notifications for all transactions in mempool.");
-            client.broadcast_all_mempool_txs(ctx, token).await??;
-        }
-
-        Command::Mining(MiningCommand::BroadcastBlockProposal) => {
-            println!("Broadcasting block proposal notifications if any is known.");
-            client.broadcast_block_proposal(ctx, token).await??;
-        }
-
-        /******** CHANGE STATE ********/
-        Command::Node(NodeCommand::Shutdown) => {
-            println!("Sending shutdown-command.");
-            client.shutdown(ctx, token).await??;
-            println!("Shutdown-command completed successfully.");
-        }
-        Command::Network(NetworkCommand::ClearAllStandings) => {
-            client.clear_all_standings(ctx, token).await??;
-            println!("Cleared all standings.");
-        }
-        Command::Network(NetworkCommand::ClearStandingByIp { ip }) => {
-            client.clear_standing_by_ip(ctx, token, ip).await??;
-            println!("Cleared standing of {ip}");
-        }
-        Command::Network(NetworkCommand::Ban { addresses }) => {
-            for address in addresses {
-                client.ban(ctx, token, address.clone()).await??;
-                println!("Banned {address}.");
-                tokio::time::sleep(Duration::from_millis(10)).await;
-            }
-        }
-        Command::Network(NetworkCommand::Unban { addresses, all }) => {
-            if all {
-                client.unban_all(ctx, token).await??;
-                println!("Unbanned all.");
-            } else {
-                for address in addresses {
-                    client.unban(ctx, token, address.clone()).await??;
-                    println!("Unbanned {address}.");
-                    tokio::time::sleep(Duration::from_millis(10)).await;
-                }
-            }
-        }
-        Command::Network(NetworkCommand::Dial { address }) => {
-            client.dial(ctx, token, address).await??;
-            println!("beeep brp");
-        }
-        Command::Network(NetworkCommand::ProbeNat) => {
-            client.probe_nat(ctx, token).await??;
-        }
-        Command::Network(NetworkCommand::ResetRelayReservations) => {
-            client.reset_relay_reservations(ctx, token).await??;
-        }
-        Command::Network(NetworkCommand::NetworkOverview) => {
-            let overview = client.get_network_overview(ctx, token).await??;
-            println!("{overview}");
-        }
-        Command::Wallet(WalletCommand::ClaimUtxo {
-            format,
-            max_search_depth,
-        }) => {
-            let ciphertext = match format {
-                ClaimUtxoFormat::File { path } => {
-                    let buf = std::fs::read_to_string(path)?;
-                    let utxo_transfer_entry: UtxoTransferEntry = serde_json::from_str(&buf)?;
-                    utxo_transfer_entry.ciphertext
-                }
-                ClaimUtxoFormat::Raw { ciphertext } => ciphertext,
-            };
-
-            let claim_was_new = client
-                .claim_utxo(ctx, token, ciphertext, max_search_depth)
-                .await??;
-
-            if claim_was_new {
-                println!("Success.  1 Utxo Transfer was imported.");
-            } else {
-                println!("This claim has already been registered.");
-            }
-        }
-        Command::Wallet(WalletCommand::Rescan {
-            quarry:
-                RescanQuarry::Announced {
-                    address,
-                    first,
-                    last,
-                },
-        }) => {
-            // Parse address.
-            let derivation_path = if let Some(address) = address {
-                // Get network from server.
-                let network = client.network(ctx).await??;
-
-                // Parse on client.
-                let Some(full_or_abbreviated_address) =
-                    FullOrAbbreviatedAddress::parse(&address, network)
-                else {
-                    println!("Could not parse address.");
-                    return Ok(());
+                let auth::CookieHint {
+                    data_directory,
+                    network,
+                } = match get_cookie_hint(&client, &args).await {
+                    Ok(h) => h,
+                    Err(e) => {
+                        eprintln!("{e}");
+                        eprintln!(
+                            "Could not ping `neptune-core`. Do configurations match? Or is it still starting up?"
+                        );
+                        std::process::exit(1);
+                    }
                 };
 
-                // Read from disk directly.
-                let wallet_entropy = get_wallet_entropy(network, args.data_dir.clone())?;
+                let token: auth::Token = match auth::Cookie::try_load(&data_directory).await {
+                    Ok(t) => t,
+                    Err(e) => {
+                        eprintln!("Unable to load RPC auth cookie. error = {e}");
+                        std::process::exit(2)
+                    }
+                }.into();
 
-                // Report on key type.
-                let key_type = full_or_abbreviated_address.key_type();
-                println!("key type: {}", key_type);
+                match args.command {
+                    Command::Completions
+                    | Command::Wallet(
+                        WalletCommand::GenerateWallet { .. }
+                        | WalletCommand::WhichWallet { .. }
+                        | WalletCommand::ExportSeedPhrase { .. }
+                        | WalletCommand::ImportSeedPhrase { .. }
+                        | WalletCommand::ShamirCombine { .. }
+                        | WalletCommand::ShamirShare { .. }
+                        | WalletCommand::NthReceivingAddress { .. }
+                        | WalletCommand::IndexOf { .. },
+                    ) => {
+                        unreachable!("Case should be handled earlier.")
+                    }
 
-                // Iterate until match.
-                let derivation_index =
-                    find_index_of(full_or_abbreviated_address, wallet_entropy, network).await?;
-                println!("derivation index: {derivation_index}");
+                    /******** READ STATE ********/
+                    Command::Wallet(WalletCommand::ListCoins) => {
+                        let list = client.list_own_coins(ctx, token).await??;
+                        let now = Timestamp::now();
+                        println!("{}", CoinWithPossibleTimeLock::report(&list, now));
+                    }
+                    Command::Wallet(WalletCommand::ProveAnTransfer { tx_ix, utxo_ix, block }) => {
+                        let mut ctx = ctx;
+                        ctx.deadline = ctx.deadline + Duration::from_mins(3);
+                        let (block, proofs) = client.prove_transfer(ctx, token, tx_ix, utxo_ix, block).await??;
+                        println!("Proving was done using the block <{block}>.");
+                        println!["{} proofs have been generated", proofs.len()];
+                        for (claim, proof) in proofs {
+                            // if claim.input.len() == 2 && claim.output.len() == 4 {
+                                let proof = proof.map_err(|e| anyhow::anyhow!(e))?;
+                                let id = claim.output[1].to_string();
+                                let path_proving = DataDirectory::get(args.data_dir.clone(), args.network.unwrap_or_default())?.root_dir_path()
+                                .join(Path::new(data_directory::DIRNAME_PROVING));
+                                data_directory::DataDirectory::create_dir_if_not_exists(&path_proving).await?;
+                                let path = path_proving.join(Path::new(["transfer_", &id, ".proof"].concat().as_str()));
+                                let path_proof = path.display();
+                                println!["Saving to {path_proof}..."];
+                                let proof
+                                    // : tokio::task::JoinHandle<anyhow::Result<_>> 
+                                    = tokio::task::spawn(
+                                    // async move {
+                                        tokio::fs::write(
+                                            path.clone(), 
+                                            rmp_serde::to_vec(&proof)?
+                                        )
+                                        // .await.map_err(|e| anyhow![e])
+                                    // }
+                                );    
+                                let path = path_proving.join(Path::new(["transfer_", &id, ".json"].concat().as_str()));
+                                tokio::fs::write(path.clone(), serde_json::to_vec(&claim)?).await?;
+                                proof.await??;
+                                println!["Saved both files: "];
+                                println!["- <{}> -- the claim, and ", path.display()];
+                                println!["- <{path_proof}> -- the proof."];
+                            // } else {Err(anyhow!["Unexpected claim format: expected 2 inputs and 4 outputs, got {} inputs and {} outputs", claim.input.len(), claim.output.len()])?};
+                        }
+                    }
+                    Command::Wallet(WalletCommand::VerifyProof { claim, proof }) => {
+                        // let proof: tokio::task::JoinHandle<anyhow::Result<NeptuneProof>>  = 
+                        //     tokio::task::spawn(async move {rmp_serde::from_slice::<NeptuneProof>(&tokio::fs::read(&proof).await?).map_err(|e| anyhow::anyhow!(e))});
+                        let proof = 
+                            tokio::task::spawn(async move {rmp_serde::from_slice::<NeptuneProof>(&tokio::fs::read(&proof).await?).map_err(|e| anyhow!(e))});
 
-                Some((key_type, derivation_index))
-            } else {
-                None
-            };
+                        if client.triton_verify(
+                            ctx, token, 
+                            serde_json::from_slice::<neptune_cash::api::export::Claim>(&tokio::fs::read(&claim).await?)?,
+                            proof.await??, 
+                        ).await?? {
+                            println!["Well, it's verified!"];
+                            println!["**Remember to check the claim meticulously, including the AOCL digest pertains to canonical block!**"];
+                        } else {println!["Too **bad:** this proof does not proves this claim."]}
+                    }
+                    Command::Blockchain(BlockchainCommand::Network) => {
+                        // we already queried the network above
+                        println!("{network}")
+                    }
+                    Command::Network(NetworkCommand::OwnListenAddressForPeers) => {
+                        let own_listen_address = client.own_listen_address_for_peers(ctx, token).await??;
+                        match own_listen_address {
+                            Some(addr) => println!("{addr}"),
+                            None => println!("No listen address configured"),
+                        }
+                    }
+                    Command::Network(NetworkCommand::OwnInstanceId) => {
+                        let val = client.own_instance_id(ctx, token).await??;
+                        println!("{val}")
+                    }
+                    Command::Blockchain(BlockchainCommand::BlockHeight) => {
+                        let block_height = client.block_height(ctx, token).await??;
+                        println!("Block height: {block_height}")
+                    }
+                    Command::Blockchain(BlockchainCommand::BlockInfo { block_selector }) => {
+                        let data = client.block_info(ctx, token, block_selector).await??;
+                        match data {
+                            Some(block_info) => println!("{block_info}"),
+                            None => println!("Not found"),
+                        }
+                    }
+                    Command::Blockchain(BlockchainCommand::BlockDigestsByHeight { height }) => {
+                        let digests = client
+                            .block_digests_by_height(ctx, token, height.into())
+                            .await??;
+                        for digest in digests {
+                            println!("{digest:x}");
+                        }
+                    }
+                    Command::Mining(MiningCommand::BestBlockProposal) => {
+                        let best_proposal = client.best_proposal(ctx, token).await??;
+                        match best_proposal {
+                            Some(block_info) => println!("{block_info}"),
+                            None => println!("Not found"),
+                        }
+                    }
+                    Command::Wallet(WalletCommand::Confirmations) => {
+                        let val = client.confirmations(ctx, token).await??;
+                        match val {
+                            Some(confs) => println!("{confs}"),
+                            None => println!("Wallet has not received any ingoing transactions yet"),
+                        }
+                    }
+                    Command::Network(NetworkCommand::PeerInfo) => {
+                        let peers = client.peer_info(ctx, token).await??;
+                        println!("{} connected peers", peers.len());
+                        println!("{}", serde_json::to_string(&peers)?);
+                    }
+                    Command::Network(NetworkCommand::AllPunishedPeers) => {
+                        let peer_sanctions = client.all_punished_peers(ctx, token).await??;
+                        for (ip, sanction) in peer_sanctions {
+                            let standing = sanction.standing;
+                            let latest_sanction_str = match sanction.latest_punishment {
+                                Some((sanction, _timestamp)) => sanction.to_string(),
+                                None => String::default(),
+                            };
+                            println!("{ip}\nstanding: {standing}\nlatest sanction: {latest_sanction_str} \n\n");
+                        }
+                    }
+                    Command::Blockchain(BlockchainCommand::TipDigest) => {
+                        let head_hash = client
+                            .block_digest(
+                                ctx,
+                                token,
+                                BlockSelector::Special(BlockSelectorLiteral::Tip),
+                            )
+                            .await??
+                            .unwrap_or_default();
+                        println!("{head_hash:x}");
+                    }
+                    Command::Blockchain(BlockchainCommand::LatestTipDigests { n }) => {
+                        let head_hashes = client.latest_tip_digests(ctx, token, n).await??;
+                        for hash in head_hashes {
+                            println!("{hash:x}");
+                        }
+                    }
+                    Command::Blockchain(BlockchainCommand::TipHeader) => {
+                        let val = client
+                            .header(
+                                ctx,
+                                token,
+                                BlockSelector::Special(BlockSelectorLiteral::Tip),
+                            )
+                            .await??
+                            .expect("Tip header should be found");
+                        println!("{val}")
+                    }
+                    Command::Blockchain(BlockchainCommand::Header { block_selector }) => {
+                        let res = client.header(ctx, token, block_selector).await??;
+                        if let Some(res) = res {
+                            println!("{res}");
+                        } else {
+                            println!("Block did not exist in database.");
+                        }
+                    }
+                    Command::Blockchain(BlockchainCommand::RevalidateHistory { first, last }) => {
+                        let tip_height = client.block_height(ctx, token).await??;
+                        let first = first.map(BlockHeight::from).unwrap_or_default();
+                        let last = last.map(BlockHeight::from).unwrap_or(tip_height);
+                        println!(
+                            "Re-validating block range {first}..={last} ...\
+                        Check the node's log for the result."
+                        );
+                        let _ = client.revalidate_history(ctx, token, first, last).await;
+                    }
+                    Command::Wallet(WalletCommand::ConfirmedAvailableBalance) => {
+                        let val = client.confirmed_available_balance(ctx, token).await??;
+                        println!("{val}");
+                    }
+                    Command::Wallet(WalletCommand::UnconfirmedAvailableBalance) => {
+                        let val = client.unconfirmed_available_balance(ctx, token).await??;
+                        println!("{val}");
+                    }
+                    Command::Wallet(WalletCommand::WalletStatus { json, table }) => {
+                        let wallet_status: WalletStatus = client.wallet_status(ctx, token).await??;
+                        let exported_string = if json {
+                            WalletStatusExportFormat::Json.export(&wallet_status)
+                        } else if table {
+                            WalletStatusExportFormat::Table.export(&wallet_status)
+                        } else {
+                            WalletStatusExportFormat::Json.export(&wallet_status)
+                        };
+                        println!("{exported_string}");
+                    }
+                    Command::Wallet(WalletCommand::NumExpectedUtxos) => {
+                        let num = client.num_expected_utxos(ctx, token).await??;
+                        println!("Found a total of {num} expected UTXOs in the database");
+                    }
+                    Command::Wallet(WalletCommand::NextReceivingAddress) => {
+                        let receiving_address = client
+                            .next_receiving_address(ctx, token, KeyType::Pokolen)
+                            .await??;
+                        println!("{}", receiving_address.to_display_bech32m(network).unwrap())
+                    }
+                    Command::Wallet(WalletCommand::GetDerivationIndex { key_type }) => {
+                        let derivation_index = client.get_derivation_index(ctx, token, key_type).await??;
+                        println!("{derivation_index}");
+                    }
+                    Command::Wallet(WalletCommand::SetDerivationIndex {
+                        key_type,
+                        derivation_index,
+                    }) => {
+                        client
+                            .set_derivation_index(ctx, token, key_type, derivation_index)
+                            .await??;
+                        println!("done");
+                    }
+                    Command::Mempool(MempoolCommand::MempoolTxCount) => {
+                        let count: usize = client.mempool_tx_count(ctx, token).await??;
+                        println!("{count}");
+                    }
+                    Command::Mempool(MempoolCommand::MempoolSize) => {
+                        let size_in_bytes: usize = client.mempool_size(ctx, token).await??;
+                        println!("{size_in_bytes} bytes");
+                    }
+                    Command::Mempool(MempoolCommand::ListMempoolTransactionIds) => {
+                        let txids = client.mempool_tx_ids(ctx, token).await??;
+                        println!("{}", txids.iter().join("\n"));
+                    }
 
-            // Make RPC call.
-            let range_end = last.unwrap_or(first);
-            client
-                .rescan_announced(ctx, token, first.into(), range_end.into(), derivation_path)
-                .await??;
-            println!("Rescan started. Please check application log for progress.");
-        }
-        Command::Wallet(WalletCommand::Rescan {
-            quarry: RescanQuarry::Expected { first, last },
-        }) => {
-            let range_end = last.unwrap_or(first);
-            client
-                .rescan_expected(ctx, token, first.into(), range_end.into())
-                .await??;
-            println!("Rescan started. Please check application log for progress.");
-        }
-        Command::Wallet(WalletCommand::Rescan {
-            quarry: RescanQuarry::Outgoing,
-        }) => {
-            client.rescan_outgoing(ctx, token).await??;
-            println!("Rescan started. Please check application log for progress.");
-        }
-        Command::Wallet(WalletCommand::Rescan {
-            quarry: RescanQuarry::GuesserRewards { first, last },
-        }) => {
-            let range_end = last.unwrap_or(first);
-            client
-                .rescan_guesser_rewards(ctx, token, first.into(), range_end.into())
-                .await??;
-            println!("Rescan started. Please check application log for progress.");
-        }
-        Command::Payment(PaymentCommand::Send {
-            address,
-            amount,
-            fee,
-            receiver_tag,
-            notify_self,
-            notify_other,
-            accept_lustrations,
-        }) => {
-            // Parse on client
-            let receiving_address = ReceivingAddress::from_bech32m(&address, network)?;
+                    /******** BLOCKCHAIN STATISTICS ********/
+                    Command::Statistics(StatisticsCommand::BlockIntervals {
+                        last_block,
+                        max_num_blocks,
+                    }) => {
+                        let data = client
+                            .block_intervals(ctx, token, last_block, max_num_blocks)
+                            .await??;
+                        match data {
+                            Some(intervals) => {
+                                println!(
+                                    "{}",
+                                    intervals
+                                        .iter()
+                                        .map(|(height, interval)| format!("{height}: {interval}"))
+                                        .join("\n")
+                                )
+                            }
+                            None => println!("Not found"),
+                        }
+                    }
 
-            // abort early on negative fee
-            if fee.is_negative() {
-                eprintln!("Fee must be non-negative.");
-                bail!("Failed to create transaction.");
-            }
+                    Command::Statistics(StatisticsCommand::BlockDifficulties {
+                        last_block,
+                        max_num_blocks,
+                    }) => {
+                        let difficulties = client
+                            .block_difficulties(ctx, token, last_block, max_num_blocks)
+                            .await??;
 
-            let resp = client
-                .send(
-                    ctx,
-                    token,
-                    vec![OutputFormat::AddressAndAmountAndMedium(
-                        receiving_address,
+                        println!(
+                            "{}",
+                            difficulties
+                                .iter()
+                                .map(|(height, difficulty)| format!("{height}: {difficulty}"))
+                                .join("\n")
+                        )
+                    }
+
+                    Command::Statistics(StatisticsCommand::CirculatingSupply) => {
+                        let circulating_supply = client.circulating_supply(ctx, token).await??;
+                        println!("{}", circulating_supply.display_lossless());
+                    }
+
+                    Command::Statistics(StatisticsCommand::MaxSupply) => {
+                        let max_supply = client.max_supply(ctx, token).await??;
+                        println!("{}", max_supply.display_lossless());
+                    }
+
+                    Command::Statistics(StatisticsCommand::BurnedSupply) => {
+                        let burned_supply = client.burned_supply(ctx, token).await??;
+                        println!("{}", burned_supply.display_lossless());
+                    }
+
+                    /******** PEER INTERACTIONS ********/
+                    Command::Mempool(MempoolCommand::BroadcastMempoolTransactions) => {
+                        println!("Broadcasting transaction-notifications for all transactions in mempool.");
+                        client.broadcast_all_mempool_txs(ctx, token).await??;
+                    }
+
+                    Command::Mining(MiningCommand::BroadcastBlockProposal) => {
+                        println!("Broadcasting block proposal notifications if any is known.");
+                        client.broadcast_block_proposal(ctx, token).await??;
+                    }
+
+                    /******** CHANGE STATE ********/
+                    Command::Node(NodeCommand::Shutdown) => {
+                        println!("Sending shutdown-command.");
+                        client.shutdown(ctx, token).await??;
+                        println!("Shutdown-command completed successfully.");
+                    }
+                    Command::Network(NetworkCommand::ClearAllStandings) => {
+                        client.clear_all_standings(ctx, token).await??;
+                        println!("Cleared all standings.");
+                    }
+                    Command::Network(NetworkCommand::ClearStandingByIp { ip }) => {
+                        client.clear_standing_by_ip(ctx, token, ip).await??;
+                        println!("Cleared standing of {ip}");
+                    }
+                    Command::Network(NetworkCommand::Ban { addresses }) => {
+                        for address in addresses {
+                            client.ban(ctx, token, address.clone()).await??;
+                            println!("Banned {address}.");
+                            tokio::time::sleep(Duration::from_millis(10)).await;
+                        }
+                    }
+                    Command::Network(NetworkCommand::Unban { addresses, all }) => {
+                        if all {
+                            client.unban_all(ctx, token).await??;
+                            println!("Unbanned all.");
+                        } else {
+                            for address in addresses {
+                                client.unban(ctx, token, address.clone()).await??;
+                                println!("Unbanned {address}.");
+                                tokio::time::sleep(Duration::from_millis(10)).await;
+                            }
+                        }
+                    }
+                    Command::Network(NetworkCommand::Dial { address }) => {
+                        client.dial(ctx, token, address).await??;
+                        println!("beeep brp");
+                    }
+                    Command::Network(NetworkCommand::ProbeNat) => {
+                        client.probe_nat(ctx, token).await??;
+                    }
+                    Command::Network(NetworkCommand::ResetRelayReservations) => {
+                        client.reset_relay_reservations(ctx, token).await??;
+                    }
+                    Command::Network(NetworkCommand::NetworkOverview) => {
+                        let overview = client.get_network_overview(ctx, token).await??;
+                        println!("{overview}");
+                    }
+                    Command::Wallet(WalletCommand::ClaimUtxo {
+                        format,
+                        max_search_depth,
+                    }) => {
+                        let ciphertext = match format {
+                            ClaimUtxoFormat::File { path } => {
+                                let buf = std::fs::read_to_string(path)?;
+                                let utxo_transfer_entry: UtxoTransferEntry = serde_json::from_str(&buf)?;
+                                utxo_transfer_entry.ciphertext
+                            }
+                            ClaimUtxoFormat::Raw { ciphertext } => ciphertext,
+                        };
+
+                        let claim_was_new = client
+                            .claim_utxo(ctx, token, ciphertext, max_search_depth)
+                            .await??;
+
+                        if claim_was_new {
+                            println!("Success.  1 Utxo Transfer was imported.");
+                        } else {
+                            println!("This claim has already been registered.");
+                        }
+                    }
+                    Command::Wallet(WalletCommand::Rescan {
+                        quarry:
+                            RescanQuarry::Announced {
+                                address,
+                                first,
+                                last,
+                            },
+                    }) => {
+                        // Parse address.
+                        let derivation_path = if let Some(address) = address {
+                            // Get network from server.
+                            let network = client.network(ctx).await??;
+
+                            // Parse on client.
+                            let Some(full_or_abbreviated_address) =
+                                FullOrAbbreviatedAddress::parse(&address, network)
+                            else {
+                                println!("Could not parse address.");
+                                return Ok(());
+                            };
+
+                            // Read from disk directly.
+                            let wallet_entropy = get_wallet_entropy(network, args.data_dir.clone())?;
+
+                            // Report on key type.
+                            let key_type = full_or_abbreviated_address.key_type();
+                            println!("key type: {}", key_type);
+
+                            // Iterate until match.
+                            let derivation_index =
+                                find_index_of(full_or_abbreviated_address, wallet_entropy, network).await?;
+                            println!("derivation index: {derivation_index}");
+
+                            Some((key_type, derivation_index))
+                        } else {
+                            None
+                        };
+
+                        // Make RPC call.
+                        let range_end = last.unwrap_or(first);
+                        client
+                            .rescan_announced(ctx, token, first.into(), range_end.into(), derivation_path)
+                            .await??;
+                        println!("Rescan started. Please check application log for progress.");
+                    }
+                    Command::Wallet(WalletCommand::Rescan {
+                        quarry: RescanQuarry::Expected { first, last },
+                    }) => {
+                        let range_end = last.unwrap_or(first);
+                        client
+                            .rescan_expected(ctx, token, first.into(), range_end.into())
+                            .await??;
+                        println!("Rescan started. Please check application log for progress.");
+                    }
+                    Command::Wallet(WalletCommand::Rescan {
+                        quarry: RescanQuarry::Outgoing,
+                    }) => {
+                        client.rescan_outgoing(ctx, token).await??;
+                        println!("Rescan started. Please check application log for progress.");
+                    }
+                    Command::Wallet(WalletCommand::Rescan {
+                        quarry: RescanQuarry::GuesserRewards { first, last },
+                    }) => {
+                        let range_end = last.unwrap_or(first);
+                        client
+                            .rescan_guesser_rewards(ctx, token, first.into(), range_end.into())
+                            .await??;
+                        println!("Rescan started. Please check application log for progress.");
+                    }
+                    Command::Payment(PaymentCommand::Send {
+                        address,
                         amount,
+                        fee,
+                        receiver_tag,
+                        notify_self,
                         notify_other,
-                    )],
-                    ChangePolicy::recover_to_next_unused_key(KeyType::ViewingAddress, notify_self),
-                    fee,
-                    accept_lustrations,
-                )
-                .await?;
-            let tx_artifacts = match resp {
-                Ok(v) => v,
-                Err(e) => {
-                    eprintln!("{e}");
-                    bail!("Failed to create transaction.");
-                }
-            };
+                        accept_lustrations,
+                    }) => {
+                        // Parse on client
+                        let receiving_address = ReceivingAddress::from_bech32m(&address, network)?;
 
-            println!(
-                "Successfully created transaction: {}",
-                tx_artifacts.transaction().txid()
-            );
+                        // abort early on negative fee
+                        if fee.is_negative() {
+                            eprintln!("Fee must be non-negative.");
+                            bail!("Failed to create transaction.");
+                        }
 
-            process_utxo_notifications(
-                &data_directory,
-                network,
-                tx_artifacts.all_offchain_notifications(),
-                Some(receiver_tag),
-            )?
-        }
-        Command::Payment(PaymentCommand::SendToMany {
-            file,
-            outputs,
-            fee,
-            accept_lustrations,
-        }) => {
-            let parsed_outputs = if let Some(filename) = file {
-                if !outputs.is_empty() {
-                    bail!("specify raw outputs or a file to read them from but not both");
+                        let resp = client
+                            .send(
+                                ctx,
+                                token,
+                                vec![OutputFormat::AddressAndAmountAndMedium(
+                                    receiving_address,
+                                    amount,
+                                    notify_other,
+                                )],
+                                ChangePolicy::recover_to_next_unused_key(KeyType::ViewingAddress, notify_self),
+                                fee,
+                                accept_lustrations,
+                            )
+                            .await?;
+                        let tx_artifacts = match resp {
+                            Ok(v) => v,
+                            Err(e) => {
+                                eprintln!("{e}");
+                                bail!("Failed to create transaction.");
+                            }
+                        };
+
+                        println!(
+                            "Successfully created transaction: {}",
+                            tx_artifacts.transaction().txid()
+                        );
+
+                        process_utxo_notifications(
+                            &data_directory,
+                            network,
+                            tx_artifacts.all_offchain_notifications(),
+                            Some(receiver_tag),
+                        )?
+                    }
+                    Command::Payment(PaymentCommand::SendToMany {
+                        file,
+                        outputs,
+                        fee,
+                        accept_lustrations,
+                    }) => {
+                        let parsed_outputs = if let Some(filename) = file {
+                            if !outputs.is_empty() {
+                                bail!("specify raw outputs or a file to read them from but not both");
+                            }
+                            let s = std::fs::read_to_string(filename)?;
+                            println!("read file: {s}");
+                            let mut beneficiaries = vec![];
+                            for chunk in s.split_whitespace() {
+                                let beneficiary = Beneficiary::from_str(chunk)?;
+                                beneficiaries.push(beneficiary);
+                            }
+                            beneficiaries
+                                .into_iter()
+                                .map(|beneficiary| beneficiary.to_output_format(network))
+                                .collect::<Result<Vec<_>>>()?
+                        } else {
+                            if outputs.is_empty() {
+                                bail!("must specify at least one beneficiary");
+                            }
+                            outputs
+                                .into_iter()
+                                .map(|o| o.to_output_format(network))
+                                .collect::<Result<Vec<_>>>()?
+                        };
+
+                        let res = client
+                            .send(
+                                ctx,
+                                token,
+                                parsed_outputs,
+                                ChangePolicy::recover_to_next_unused_key(
+                                    KeyType::ViewingAddress,
+                                    UtxoNotificationMedium::OnChain,
+                                ),
+                                fee,
+                                accept_lustrations,
+                            )
+                            .await?;
+                        match res {
+                            Ok(tx_artifacts) => {
+                                println!(
+                                    "Successfully created transaction: {}",
+                                    tx_artifacts.transaction().txid()
+                                );
+
+                                process_utxo_notifications(
+                                    &data_directory,
+                                    network,
+                                    tx_artifacts.all_offchain_notifications(),
+                                    None, // todo:  parse receiver tags from cmd-line.
+                                )?
+                            }
+                            Err(e) => eprintln!("{e}"),
+                        }
+                    }
+                    Command::Payment(PaymentCommand::SendTransparent { file, outputs, fee }) => {
+                        let parsed_outputs = if let Some(filename) = file {
+                            if !outputs.is_empty() {
+                                bail!("specify raw outputs or a file to read them from but not both");
+                            }
+                            let s = std::fs::read_to_string(filename)?;
+                            let mut beneficiaries = vec![];
+                            for chunk in s.split_whitespace() {
+                                let beneficiary = Beneficiary::from_str(chunk)?;
+                                beneficiaries.push(beneficiary);
+                            }
+                            beneficiaries
+                                .into_iter()
+                                .map(|beneficiary| beneficiary.to_output_format(network))
+                                .collect::<Result<Vec<_>>>()?
+                        } else {
+                            if outputs.is_empty() {
+                                bail!("must specify at least one beneficiary");
+                            }
+                            outputs
+                                .into_iter()
+                                .map(|o| o.to_output_format(network))
+                                .collect::<Result<Vec<_>>>()?
+                        };
+
+                        let res = client
+                            .send_transparent(
+                                ctx,
+                                token,
+                                parsed_outputs,
+                                ChangePolicy::recover_to_next_unused_key(
+                                    KeyType::ViewingAddress,
+                                    UtxoNotificationMedium::OnChain,
+                                ),
+                                fee,
+                            )
+                            .await?;
+                        match res {
+                            Ok(tx_artifacts) => {
+                                println!(
+                                    "Successfully created transparent transaction: {}",
+                                    tx_artifacts.transaction().txid()
+                                );
+
+                                // no need to process UTXO notifications:
+                                // all outputs (change included) generate *on-chain*
+                                // notifications
+                            }
+                            Err(e) => eprintln!("{e}"),
+                        }
+                    }
+                    Command::Payment(PaymentCommand::Consolidate {
+                        batch,
+                        address,
+                        accept_lustrations,
+                    }) => {
+                        let network = client.network(ctx).await??;
+                        let address = match address {
+                            None => None,
+                            Some(string) => Some(ReceivingAddress::from_bech32m(&string, network)?),
+                        };
+                        let num_utxos_consolidated = client
+                            .consolidate(ctx, token, Some(batch), address, accept_lustrations)
+                            .await??;
+
+                        println!("Initiating transaction to consolidate {num_utxos_consolidated} UTXOs.");
+                    }
+                    Command::Mining(MiningCommand::Upgrade { tx_kernel_id }) => {
+                        println!("Attempting to upgrade transaction {tx_kernel_id}");
+                        let response = client.upgrade(ctx, token, tx_kernel_id).await??;
+                        if response {
+                            println!("Initiated upgrade of transaction {tx_kernel_id}");
+                        } else {
+                            println!("Found no transaction in need of upgrading");
+                        }
+                    }
+                    Command::Mempool(MempoolCommand::ClearMempool) => {
+                        println!("Sending command to delete all commands from the mempool.");
+                        client.clear_mempool(ctx, token).await??;
+                    }
+                    Command::Node(NodeCommand::Freeze) => {
+                        println!("Sending command to pause state updates.");
+                        client.freeze(ctx, token).await??;
+                    }
+                    Command::Node(NodeCommand::Unfreeze) => {
+                        println!("Sending command to resume state updates.");
+                        client.unfreeze(ctx, token).await??;
+                    }
+                    Command::Mining(MiningCommand::PauseMiner) => {
+                        println!("Sending command to pause miner.");
+                        client.pause_miner(ctx, token).await??;
+                        println!("Command completed successfully");
+                    }
+                    Command::Mining(MiningCommand::RestartMiner) => {
+                        println!("Sending command to restart miner.");
+                        client.restart_miner(ctx, token).await??;
+                        println!("Command completed successfully");
+                    }
+                    Command::Mining(MiningCommand::SetCoinbaseDistribution { file }) => {
+                        let file = std::fs::read_to_string(file)?;
+                        let coinbase_distribution: Vec<CoinbaseOutputReadable> = serde_json::from_str(&file)?;
+
+                        client
+                            .set_coinbase_distribution(ctx, token, coinbase_distribution)
+                            .await??;
+                        println!("Coinbase distribution sent to node");
+                    }
+                    Command::Mining(MiningCommand::UnsetCoinbaseDistribution) => {
+                        client.unset_coinbase_distribution(ctx, token).await??;
+                        println!("Coinbase distribution reset to own wallet");
+                    }
+
+                    Command::Node(NodeCommand::SetTip { digest }) => {
+                        println!("Setting tip ...");
+                        match client.set_tip(ctx, token, digest.0).await? {
+                            Ok(_) => {
+                                println!("message delivered; setting tip now.");
+                            }
+                            Err(server_error) => {
+                                println!("failed to set tip: {server_error}");
+                            }
+                        };
+                    }
+
+                    Command::Wallet(WalletCommand::PruneAbandonedMonitoredUtxos) => {
+                        let prunt_res_count = client.prune_abandoned_monitored_utxos(ctx, token).await??;
+                        println!("{prunt_res_count} monitored UTXOs marked as abandoned");
+                    }
+
+                    /******** RegTest Mode *********/
+                    Command::Mining(MiningCommand::MineBlocksToWallet { num_blocks }) => {
+                        println!("Sending command to mine block(s).");
+                        client
+                            .mine_blocks_to_wallet(ctx, token, num_blocks)
+                            .await??;
+                        println!("Command completed successfully");
+                    }
                 }
-                let s = std::fs::read_to_string(filename)?;
-                println!("read file: {s}");
-                let mut beneficiaries = vec![];
-                for chunk in s.split_whitespace() {
-                    let beneficiary = Beneficiary::from_str(chunk)?;
-                    beneficiaries.push(beneficiary);
-                }
-                beneficiaries
-                    .into_iter()
-                    .map(|beneficiary| beneficiary.to_output_format(network))
-                    .collect::<Result<Vec<_>>>()?
             } else {
-                if outputs.is_empty() {
-                    bail!("must specify at least one beneficiary");
-                }
-                outputs
-                    .into_iter()
-                    .map(|o| o.to_output_format(network))
-                    .collect::<Result<Vec<_>>>()?
-            };
-
-            let res = client
-                .send(
-                    ctx,
-                    token,
-                    parsed_outputs,
-                    ChangePolicy::recover_to_next_unused_key(
-                        KeyType::ViewingAddress,
-                        UtxoNotificationMedium::OnChain,
-                    ),
-                    fee,
-                    accept_lustrations,
-                )
-                .await?;
-            match res {
-                Ok(tx_artifacts) => {
-                    println!(
-                        "Successfully created transaction: {}",
-                        tx_artifacts.transaction().txid()
-                    );
-
-                    process_utxo_notifications(
-                        &data_directory,
-                        network,
-                        tx_artifacts.all_offchain_notifications(),
-                        None, // todo:  parse receiver tags from cmd-line.
-                    )?
-                }
-                Err(e) => eprintln!("{e}"),
+                eprintln!("This command requires a connection to `neptune-core`, but that connection could not be established. Is `neptune-core` running?");
             }
-        }
-        Command::Payment(PaymentCommand::SendTransparent { file, outputs, fee }) => {
-            let parsed_outputs = if let Some(filename) = file {
-                if !outputs.is_empty() {
-                    bail!("specify raw outputs or a file to read them from but not both");
-                }
-                let s = std::fs::read_to_string(filename)?;
-                let mut beneficiaries = vec![];
-                for chunk in s.split_whitespace() {
-                    let beneficiary = Beneficiary::from_str(chunk)?;
-                    beneficiaries.push(beneficiary);
-                }
-                beneficiaries
-                    .into_iter()
-                    .map(|beneficiary| beneficiary.to_output_format(network))
-                    .collect::<Result<Vec<_>>>()?
-            } else {
-                if outputs.is_empty() {
-                    bail!("must specify at least one beneficiary");
-                }
-                outputs
-                    .into_iter()
-                    .map(|o| o.to_output_format(network))
-                    .collect::<Result<Vec<_>>>()?
-            };
 
-            let res = client
-                .send_transparent(
-                    ctx,
-                    token,
-                    parsed_outputs,
-                    ChangePolicy::recover_to_next_unused_key(
-                        KeyType::ViewingAddress,
-                        UtxoNotificationMedium::OnChain,
-                    ),
-                    fee,
-                )
-                .await?;
-            match res {
-                Ok(tx_artifacts) => {
-                    println!(
-                        "Successfully created transparent transaction: {}",
-                        tx_artifacts.transaction().txid()
-                    );
-
-                    // no need to process UTXO notifications:
-                    // all outputs (change included) generate *on-chain*
-                    // notifications
-                }
-                Err(e) => eprintln!("{e}"),
-            }
-        }
-        Command::Payment(PaymentCommand::Consolidate {
-            batch,
-            address,
-            accept_lustrations,
-        }) => {
-            let network = client.network(ctx).await??;
-            let address = match address {
-                None => None,
-                Some(string) => Some(ReceivingAddress::from_bech32m(&string, network)?),
-            };
-            let num_utxos_consolidated = client
-                .consolidate(ctx, token, Some(batch), address, accept_lustrations)
-                .await??;
-
-            println!("Initiating transaction to consolidate {num_utxos_consolidated} UTXOs.");
-        }
-        Command::Mining(MiningCommand::Upgrade { tx_kernel_id }) => {
-            println!("Attempting to upgrade transaction {tx_kernel_id}");
-            let response = client.upgrade(ctx, token, tx_kernel_id).await??;
-            if response {
-                println!("Initiated upgrade of transaction {tx_kernel_id}");
-            } else {
-                println!("Found no transaction in need of upgrading");
-            }
-        }
-        Command::Mempool(MempoolCommand::ClearMempool) => {
-            println!("Sending command to delete all commands from the mempool.");
-            client.clear_mempool(ctx, token).await??;
-        }
-        Command::Node(NodeCommand::Freeze) => {
-            println!("Sending command to pause state updates.");
-            client.freeze(ctx, token).await??;
-        }
-        Command::Node(NodeCommand::Unfreeze) => {
-            println!("Sending command to resume state updates.");
-            client.unfreeze(ctx, token).await??;
-        }
-        Command::Mining(MiningCommand::PauseMiner) => {
-            println!("Sending command to pause miner.");
-            client.pause_miner(ctx, token).await??;
-            println!("Command completed successfully");
-        }
-        Command::Mining(MiningCommand::RestartMiner) => {
-            println!("Sending command to restart miner.");
-            client.restart_miner(ctx, token).await??;
-            println!("Command completed successfully");
-        }
-        Command::Mining(MiningCommand::SetCoinbaseDistribution { file }) => {
-            let file = std::fs::read_to_string(file)?;
-            let coinbase_distribution: Vec<CoinbaseOutputReadable> = serde_json::from_str(&file)?;
-
-            client
-                .set_coinbase_distribution(ctx, token, coinbase_distribution)
-                .await??;
-            println!("Coinbase distribution sent to node");
-        }
-        Command::Mining(MiningCommand::UnsetCoinbaseDistribution) => {
-            client.unset_coinbase_distribution(ctx, token).await??;
-            println!("Coinbase distribution reset to own wallet");
-        }
-
-        Command::Node(NodeCommand::SetTip { digest }) => {
-            println!("Setting tip ...");
-            match client.set_tip(ctx, token, digest.0).await? {
-                Ok(_) => {
-                    println!("message delivered; setting tip now.");
-                }
-                Err(server_error) => {
-                    println!("failed to set tip: {server_error}");
-                }
-            };
-        }
-
-        Command::Wallet(WalletCommand::PruneAbandonedMonitoredUtxos) => {
-            let prunt_res_count = client.prune_abandoned_monitored_utxos(ctx, token).await??;
-            println!("{prunt_res_count} monitored UTXOs marked as abandoned");
-        }
-
-        /******** RegTest Mode *********/
-        Command::Mining(MiningCommand::MineBlocksToWallet { num_blocks }) => {
-            println!("Sending command to mine block(s).");
-            client
-                .mine_blocks_to_wallet(ctx, token, num_blocks)
-                .await??;
-            println!("Command completed successfully");
+            Ok(())
         }
     }
-
-    Ok(())
 }
 
-// returns result with a CookieHint{ data_directory, network }.
+// returns result with a CookieHint{ data_directory, network }
 //
 // We use the data-dir provided by user if present.
 //
@@ -1137,7 +1187,7 @@ async fn get_cookie_hint(client: &RPCClient, args: &Config) -> anyhow::Result<au
 }
 
 /// Get the [`WalletEntropy`] directly from the file system; without going
-/// through neptune-core.
+/// through `neptune-core`.
 fn get_wallet_entropy(network: Network, data_dir: Option<PathBuf>) -> Result<WalletEntropy> {
     let wallet_dir = DataDirectory::get(data_dir.clone(), network)?.wallet_directory_path();
 
@@ -1163,8 +1213,7 @@ fn get_wallet_entropy(network: Network, data_dir: Option<PathBuf>) -> Result<Wal
 
 /// Print the nth receiving address.
 ///
-/// Read the wallet file directly; avoid going through the RPC interface of
-/// `neptune-core`.
+/// Read the wallet file directly; avoid going through the RPC interface of `neptune-core`.
 fn print_nth_receiving_address(
     network: Network,
     data_dir: Option<PathBuf>,

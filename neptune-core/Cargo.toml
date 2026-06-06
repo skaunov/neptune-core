@@ -21,20 +21,20 @@ eula = false
 
 [features]
 
-# logs write-lock acquisitions that are held over 100 millis.  requires nightly.
+# Logs write-lock acquisitions that are held over 100 millis.  Requires nightly.
 # to enable: cargo +nightly build --features log-slow-write-lock
 # note: nothing logged until lock is released (guard dropped)
 # alternative: run tokio-console
 log-slow-write-lock = ["track-lock-location", "track-lock-time"]
 
-# logs read-lock acquisitions that are held over 100 millis.  requires nightly.
+# Logs read-lock acquisitions that are held over 100 millis.  Requires nightly.
 # to enable: cargo +nightly build --features log-slow-read-lock
 # note: nothing logged until lock is released (guard dropped)
 # alternative: run tokio-console
 log-slow-read-lock = ["track-lock-location", "track-lock-time"]
 
-# logs all lock events (try_acquire, acquire, release).
-# useful for debugging deadlocks, or if a lock is never being released.
+# Logs all lock events (try_acquire, acquire, release).
+# Useful for debugging deadlocks, or if a lock is never being released.
 # includes acquisition location if track-lock-location feature is enabled.
 # alternative: run tokio-console
 log-lock_events = ["track-lock-location"]
@@ -47,7 +47,7 @@ track-lock-location = []
 # not generally useful by itself.
 track-lock-time = []
 
-# implements arbitrary::Arbitrary for various types
+# implements `arbitrary::Arbitrary` for various types
 arbitrary-impls = [
     "dep:arbitrary",
     "dep:proptest-arbitrary-interop",
@@ -182,9 +182,8 @@ whoami = "2.0.0"
 # *when feature flags "arbitrary-impls" and "spec" are enabled*.
 neptune-cash = { path = "../neptune-core", features = ["arbitrary-impls", "spec"] }
 
-# note: arbitrary, proptest, proptest-arbitrary-interop are duplicated in [dev-dependencies]
-# because they are optional deps but required for unit tests.
-# please ensure versions match in both sections.
+# Note: `arbitrary`, `proptest`, `proptest-arbitrary-interop` are duplicated in `[dev-dependencies]`
+# because they are optional deps but required for unit tests. Please ensure versions match in both sections.
 
 arbitrary = { version = "1.4.1", features = ["derive"] }
 assert2 = "0.3"

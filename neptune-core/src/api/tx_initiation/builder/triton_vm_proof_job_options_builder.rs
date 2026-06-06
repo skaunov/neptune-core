@@ -1,4 +1,4 @@
-//! This module implements a builder for [TritonVmProofJobOptions]
+//! This module implements a builder for [TritonVmProofJobOptions].
 
 use crate::application::config::network::Network;
 use crate::application::config::triton_vm_env_vars::TritonVmEnvVars;
@@ -54,11 +54,11 @@ use crate::state::transaction::tx_proving_capability::TxProvingCapability;
 /// ```
 #[derive(Debug, Default)]
 pub struct TritonVmProofJobOptionsBuilder {
-    // these are from TritonVmProofJobOptions
+    // these are from `TritonVmProofJobOptions`
     job_priority: Option<TritonVmJobPriority>,
     cancel_job_rx: Option<tokio::sync::watch::Receiver<()>>,
 
-    // these are from ProverJobSettings
+    // these are from `ProverJobSettings`
     max_log2_padded_height_for_proofs: Option<u8>,
     network: Option<Network>,
     tx_proving_capability: Option<TxProvingCapability>,
@@ -187,12 +187,12 @@ impl TritonVmProofJobOptionsBuilder {
         self
     }
 
-    /// specify the machine's proving capability.
+    /// specify the machine's proving capability
     ///
     /// It is important to set the device's [TxProvingCapability] so that weak
     /// devices will not attempt to build proofs they are not capable of.
     ///
-    /// default: [TxProvingCapability::default()]
+    /// default: `TxProvingCapability::default()`
     pub fn proving_capability(mut self, tx_proving_capability: TxProvingCapability) -> Self {
         self.tx_proving_capability = Some(tx_proving_capability);
         self

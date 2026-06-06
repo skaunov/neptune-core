@@ -13,6 +13,10 @@ mod spec;
 mod tests;
 
 use anyhow::anyhow;
+use futures::FutureExt;
+use itertools::Itertools;
+use tokio::task::JoinSet;
+use std::collections::HashMap;
 use std::sync::OnceLock;
 
 use tasm_lib::memory::{encode_to_memory, FIRST_NON_DETERMINISTICALLY_INITIALIZED_MEMORY_ADDRESS};
@@ -26,9 +30,11 @@ use tasm_lib::twenty_first::util_types::mmr::mmr_accumulator::MmrAccumulator;
 use tasm_lib::{field as rustfield, mmr};
 
 use crate::api::export::{NativeCurrencyAmount, Utxo};
+use crate::application::database::storage::storage_vec::traits::StorageVecBase;
 use crate::protocol::consensus::transaction::lock_script::DigestLockScript;
 use crate::protocol::consensus::type_scripts;
 use crate::protocol::proof_abstractions::{tasm::program::TritonProgram, SecretWitness};
+use crate::state::wallet::transaction_output::TxOutput;
 use crate::util_types::{ProofOfTransfer, ProofOfTransferWitness};
 
 const ERROR_AOCL_PROOF_VERIFICATION_FAILED: i128 = 1_000_521;
@@ -294,7 +300,7 @@ impl SecretWitness for ProofOfTransfer {
             individual_tokens: vec![],
             digests: vec![],
             ram: {
-                let mut m = std::collections::HashMap::default();
+                let mut m = HashMap::default();
                 encode_to_memory(
                     &mut m,
                     FIRST_NON_DETERMINISTICALLY_INITIALIZED_MEMORY_ADDRESS,
@@ -322,110 +328,169 @@ impl TritonProgram for ProofOfTransfer {
 /// - the receiver's address,
 /// - hashed sender randomness to distinguish similar transfers,
 /// - the AOCL of the block used for the argument.
+/// 
+/// # usage
+/// ## `tx_ix`
+/// The index of the sent transaction in the current wallet. If not provided, the most recent one is used.
+/// ## `utxo_ix`
+/// The index of the UTXO in the sent transaction. If provided then exactly one element in `Vec` will be returned, 
+/// otherwise all non-change outputs are used.
+/// ## ...
 ///
+/// # details
+/// 
 /// Other info is hidden in the proof, such as the exact UTXO that were spent and the exact
 /// block height at which the transfer was
 /// confirmed. The native coin is indicated by the indices (`tx_ix` & `utxo_ix`) of the sent txs
 /// in the current wallet; `block` is any which contains the transfer (the verifier must have this block
 /// as canonical). *Probably you will want to pass `block` along a successfull result so that a verifier
 /// won't need to search it by the AOCL digest from `Claim`.*
+/// 
+/// The addresses are disclosed as the components constraining the address.
 ///
+/// # verification & data
 /// The relevant data is taken from this node DB.
 /// During verification from the same block the same data will be pulled.
 ///
 /// # Panics.
 /// When `tx_ix` is out of its bound. https://github.com/Neptune-Crypto/neptune-core/issues/816#issuecomment-4161003883
-///
-/// # details
-/// the addresses are disclosed as the components constraining the address
 pub async fn helper(
     state: crate::state::GlobalStateLock,
-    tx_ix: u64,
-    utxo_ix: usize,
-    block: Digest,
-) -> anyhow::Result<(Claim, crate::api::export::NeptuneProof)> {
-    let block = state
-        .lock_async(|s| futures::FutureExt::boxed(s.chain.archival_state().get_block(block)))
-        .await?
-        .ok_or(
-            // RpcError::NoSuchCanonicalBlock
-            anyhow!("no canonical block with the given digest")
-        )?;
+    tx_ix: Option<u64>,
+    utxo_ix: Option<usize>,
+    block: Option<Digest>,
+) -> anyhow::Result<(Digest, Vec<(Claim, Result<crate::api::export::NeptuneProof, crate::api::tx_initiation::error::CreateProofError>)>)> {
+    tracing::trace!["Read-lock the global state. Until the leafs indicies are positioned for the block."];
+    let gs_lock = state.lock_guard().await;
 
-    let tx_output = state
-        .api()
-        .wallet()
-        .sentoutput_by_indicies(tx_ix, utxo_ix)
-        .await?;
+    let block_digest = block.unwrap_or_else(|| gs_lock.chain.tip_hash());
+    let block = gs_lock.chain.archival_state().get_block(
+        // TODO check that `BlockIndexKey` needs to own `Digest` and not borrow it
+        block_digest.clone()
+    ).await?.ok_or(
+        // RpcError::NoSuchCanonicalBlock
+        anyhow!("no canonical block with the given digest")
 
-    let utxo = tx_output.utxo();
-    let sender_randomness = tx_output.sender_randomness();
-    let additionrec = tx_output.addition_record();
+    )?;
 
-    let block_aocl = block
+    let block_aocl_handle = tokio::task::spawn_blocking(move || {
+        block
         // .body()
         // .mutator_set_accumulator_without_guesser_fees()
-        .mutator_set_accumulator_after().expect("only a mined block")
-        .aocl;
+        .mutator_set_accumulator_after().expect("canonical block")
+        .aocl
+    });
+
+    let sent_txs = gs_lock.wallet_state.wallet_db.sent_transactions();
+    let tx_ix_last = sent_txs.len().await.checked_sub(1).ok_or(anyhow!["current wallet has no sent transactions"])?;
+    let tx_sent = sent_txs.get(tx_ix.unwrap_or(tx_ix_last)).await;
+    let tx_outputs = 
+        if let Some(utxo_ix) = utxo_ix {vec![tx_sent.tx_outputs.get(utxo_ix).ok_or(anyhow![
+            "sent tx *output* index is out of bounds".to_string()
+        ])?]} 
+        else {tx_sent.tx_outputs.iter().filter(|o| !o.is_change()).collect()};
+
+    let block_aocl = block_aocl_handle.await?;
     let block_aocl_numleafs = block_aocl.num_leafs();
 
-    tracing::trace!["Read-lock the global state. Until the membership proof is computed for proving the transfer."];
-    let gs_lock = state.lock_guard().await;
-    let aocl_archival = &gs_lock
+    let canoncommitments: HashMap<Digest, &TxOutput> = 
+        tx_outputs.iter().map(|o| (o.addition_record().canonical_commitment, *o)).collect();
+    let leaf_range_inclusive = gs_lock
         .chain
         .archival_state()
         .archival_mutator_set
         .ams()
-        .aocl;
-
-    let aocl_leaf_ix = aocl_archival
-        .get_leaf_range_inclusive_async(0..=(block_aocl_numleafs - 1)).await
-        .iter()
-        .position(|leaf| *leaf == additionrec.canonical_commitment)
-        .ok_or(anyhow!("Can't find the UTXO in the AOCL of the given block".to_string()))? as u64;
-    let aocl_membership_proof = aocl_archival.prove_membership_relative_to_smaller_mmr(aocl_leaf_ix, block_aocl_numleafs).await;
+        .aocl.get_leaf_range_inclusive_async(0..=(block_aocl_numleafs - 1)).await;
+    // aocl_leafs_ixs
+    let txoutputs_and_leafs_ix: Vec<(&TxOutput, u64)> = leaf_range_inclusive.iter().positions(|leaf| canoncommitments.keys().contains(leaf))
+    .map(|ix| (canoncommitments[&leaf_range_inclusive[ix]], ix as u64)).collect();
 
     drop(gs_lock);
-    tracing::trace!["Unlocked reading the global state. Computed the membership proof."];
+    tracing::trace!["Unlocked reading the global state. Positioned the leafs indicies for the block."];
 
-    let sent = crate::util_types::ProofOfTransfer::new(
-        claim_outputs(
-            claim_inputs(
-                tasm_lib::triton_vm::proof::Claim::new(hash()),
-                tx_output.receiver_digest(),
-                // TODO `ProofOfTransfer` ignores time locks yet
-                utxo.release_date().unwrap_or_default(),
-            ),
-            sender_randomness.hash(),
-            block_aocl.bag_peaks(),
-            utxo.lock_script_hash(),
-            tx_output.native_currency_amount(),
-        ),
-        block_aocl,
-        sender_randomness,
-        aocl_leaf_ix,
-        utxo,
-        aocl_membership_proof,
-    );
+    if txoutputs_and_leafs_ix.is_empty() {Err(anyhow!(
+        "Can't find the UTXO in the AOCL of the given block."
+    ))} else {
+        // tx_outputs.into_par_iter().map(|(o, leaf_ix)| );
+        
+        // let aocl_membership_proofs: HashMap<u64, MmrMembershipProof> = {
+        let mut aocl_membership_proofs = JoinSet::new();
+        for (_, aocl_leaf_ix) in &txoutputs_and_leafs_ix {
+            let aocl_leaf_ix = *aocl_leaf_ix;
+            let state = state.clone();
+            let _ = aocl_membership_proofs.spawn(async move {
+                // (
+                //     aocl_leaf_ix, 
+                state.lock_async(|gs| gs.chain
+                .archival_state()
+                .archival_mutator_set
+                .ams()
+                .aocl
+                .prove_membership_relative_to_smaller_mmr(aocl_leaf_ix, block_aocl_numleafs).boxed())
+                .await
+                // )
+            });
+        }
 
-    let claim = sent.claim();
+        // let data = .collect_vec();
+        // };  
 
-    let proof = crate::protocol::proof_abstractions::tasm::program::TritonProgram::prove(
-        &sent,
-        claim.clone(),
-        sent.nondeterminism(),
-        crate::application::triton_vm_job_queue::vm_job_queue(),
-        crate::api::tx_initiation::builder::triton_vm_proof_job_options_builder::TritonVmProofJobOptionsBuilder::new()
-            .proving_capability(crate::state::transaction::tx_proving_capability::TxProvingCapability::SingleProof)
-            .proof_type(crate::api::export::TransactionProofType::SingleProof)
-            .job_priority(crate::api::export::TritonVmJobPriority::Normal)
-            .build(),
-    )
-    .await?;
-    // .map_err(|e| 
-    //     // RpcError::CreateProofError(e.to_string())
-    //     Err(anyhow::Error::msg(e.to_string()))
-    // )?;
+        let sent = aocl_membership_proofs.join_all().await.into_iter()
+        .zip(txoutputs_and_leafs_ix.into_iter())
+        .map(|(aocl_membership_proof, (o, aocl_leaf_ix))| 
+        // (
+        //     o, leaf_ix, aocl_membership_proof, o.utxo(), o.sender_randomness()
+        // )).map(|(
+        //     tx_output, 
+        //     aocl_leaf_ix, 
+        //     aocl_membership_proof, 
+        //     utxo, 
+        //     sender_randomness
+        // )| 
+        {
+            let tx_output = o;
+            let utxo = tx_output.utxo();
+            let sender_randomness = tx_output.sender_randomness();
 
-    Ok((claim, proof))
+            crate::util_types::ProofOfTransfer::new(
+                claim_outputs(
+                    claim_inputs(
+                        tasm_lib::triton_vm::proof::Claim::new(hash()),
+                        tx_output.receiver_digest(),
+                        // TODO `ProofOfTransfer` ignores time locks yet
+                        utxo.release_date().unwrap_or_default(),
+                    ),
+                    sender_randomness.hash(),
+                    block_aocl.bag_peaks(),
+                    utxo.lock_script_hash(),
+                    tx_output.native_currency_amount(),
+                ),
+                block_aocl.clone(),
+                sender_randomness,
+                aocl_leaf_ix,
+                utxo,
+                aocl_membership_proof,
+            )
+        });
+
+        let claims = sent.clone().map(|item| item.claim());
+
+        // let mut results = Vec::with_capacity(aocl_membership_proofs.len());
+        let mut proofs = JoinSet::new();
+        for (sent, claim) in sent.zip(claims.clone()) {
+            let _ = proofs.spawn(async move {crate::protocol::proof_abstractions::tasm::program::TritonProgram::prove(
+                &sent,
+                claim,
+                sent.nondeterminism(),
+                crate::application::triton_vm_job_queue::vm_job_queue(),
+                // crate::api::tx_initiation::builder::triton_vm_proof_job_options_builder::TritonVmProofJobOptionsBuilder::new()
+                //     .proving_capability(crate::state::transaction::tx_proving_capability::TxProvingCapability::SingleProof)
+                //     .proof_type(crate::api::export::TransactionProofType::SingleProof)
+                //     .job_priority(crate::api::export::TritonVmJobPriority::Normal)
+                //     .build(),
+                Default::default()
+            ).await});
+        }
+        Ok((block_digest, claims.zip(proofs.join_all().await.into_iter()).collect()))
+    }
 }

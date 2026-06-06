@@ -1,5 +1,7 @@
 pub(crate) mod quarry;
 
+use std::path::PathBuf;
+
 use clap::Parser;
 use neptune_cash::api::export::KeyType;
 use neptune_cash::api::export::Network;
@@ -50,17 +52,30 @@ pub(crate) enum WalletCommand {
         network: Network,
     },
 
-    /// Get a static generation receiving address, for premine recipients.
-    ///
-    /// This command is an alias for `nth-receiving-address 0`. It will be
-    /// disabled after mainnet launch.
-    PremineReceivingAddress {
-        #[clap(long, default_value_t)]
-        network: Network,
-    },
-
     /// list known coins
     ListCoins,
+
+    /// Prove a transfer from the current wallet.
+    ///
+    /// Without arguments/options the most recent sent transfer is
+    /// used and the current tip block is taken as the proving block. In this case ...all UTXO...
+    ProveAnTransfer {
+        #[clap(long)]
+        tx_ix: Option<u64>,
+
+        #[clap(long)]
+        utxo_ix: Option<usize>,
+
+        #[clap(long)]
+        block: Option<neptune_cash::api::export::Digest>,
+    },
+
+    VerifyProof {
+        #[clap(long, value_parser)]
+        claim: PathBuf,
+        #[clap(long, value_parser)]
+        proof: PathBuf,
+    },
 
     /// claim an off-chain utxo-transfer
     ClaimUtxo {

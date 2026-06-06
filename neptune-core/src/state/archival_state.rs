@@ -1317,16 +1317,12 @@ impl ArchivalState {
     ///  - `Err(_)` if there was a problem reading from archival state.
     pub async fn get_block(&self, block_digest: Digest) -> Result<Option<Block>> {
         let maybe_record = self.get_block_record(block_digest).await;
-        let Some(record) = maybe_record else {
-            let maybe_genesis_block =
-                (self.genesis_block.hash() == block_digest).then_some(*self.genesis_block.clone());
-            return Ok(maybe_genesis_block);
-        };
-
-        // Fetch block from disk
-        let block = self.get_block_from_block_record(record).await?;
-
-        Ok(Some(block))
+        if let Some(record) = maybe_record {
+            // Fetch block from disk.
+            Ok(Some(self.get_block_from_block_record(record).await?))
+        } else {
+            Ok((self.genesis_block.hash() == block_digest).then_some(*self.genesis_block.clone()))
+        }
     }
 
     /// Return the (block kernel, proof leaf) as identified by block hash.

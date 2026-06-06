@@ -21,20 +21,17 @@ use super::traits::Job;
 /// implements a job queue that sends result of each job to a listener.
 #[derive(Debug)]
 pub struct JobQueue<P: Ord + Send + Sync + 'static> {
-    /// holds job-queue which is shared between tokio tasks
+    /// holds job-queue which is shared between Tokio tasks
     shared_queue: Arc<Mutex<SharedQueue<P>>>,
-
     /// channel to inform process_jobs task that a job has been added
     tx_job_added: mpsc::UnboundedSender<()>,
-
-    /// channel to inform process_jobs task to stop processing.
+    /// channel to inform `process_jobs` task to stop processing
     tx_stop: tokio::sync::watch::Sender<()>,
-
-    /// JoinHandle of process_jobs task
+    /// `JoinHandle` of `process_jobs` task
     process_jobs_task_handle: Option<JoinHandle<()>>,
 }
 
-// we implement Drop so we can send stop message to process_jobs task
+// we implement `Drop` so we can send stop message to `process_jobs` task
 impl<P: Ord + Send + Sync + 'static> Drop for JobQueue<P> {
     fn drop(&mut self) {
         tracing::debug!("in JobQueue::drop()");
@@ -48,9 +45,9 @@ impl<P: Ord + Send + Sync + 'static> Drop for JobQueue<P> {
 }
 
 impl<P: Ord + Send + Sync + 'static> JobQueue<P> {
-    /// creates job queue and starts it processing.
+    /// creates job queue and starts it processing
     ///
-    /// returns immediately.
+    /// returns immediately
     pub fn start() -> Self {
         // create a SharedQueue that is shared between tokio tasks.
         let shared_queue = SharedQueue {
@@ -59,17 +56,17 @@ impl<P: Ord + Send + Sync + 'static> JobQueue<P> {
         };
         let shared_queue: Arc<Mutex<SharedQueue<P>>> = Arc::new(Mutex::new(shared_queue));
 
-        // create 'job_added' and 'stop' channels for signalling to process_jobs task
+        // create 'job_added' and 'stop' channels for signalling to `process_jobs` task
         let (tx_job_added, rx_job_added) = mpsc::unbounded_channel();
         let (tx_stop, rx_stop) = watch::channel(());
 
-        // spawn the process_jobs task
+        // spawn the `process_jobs` task
         let process_jobs_task_handle =
             tokio::spawn(process_jobs(shared_queue.clone(), rx_stop, rx_job_added));
 
         tracing::debug!("JobQueue: started new queue.");
 
-        // construct and return JobQueue
+        // construct and return `JobQueue`
         Self {
             tx_job_added,
             tx_stop,
@@ -285,31 +282,25 @@ async fn process_jobs<P: Ord + Send + Sync + 'static>(
 
                 handle_stop_signal(&shared_queue).await;
 
-                // exit loop, processing ends.
+                // exit loop, processing ends
                 break;
             },
         };
 
-        // create JobCompletion from task results
-        let job_completion = match job_task_result {
-            Ok(jc) => jc,
-            Err(e) => {
-                if e.is_panic() {
-                    JobCompletion::Panicked(e.into_panic())
-                } else if e.is_cancelled() {
-                    JobCompletion::Cancelled
-                } else {
-                    unreachable!()
-                }
-            }
-        };
+        // create [`JobCompletion`] from task results
+        let job_completion = job_task_result.unwrap_or_else(|e| if e.is_panic() {
+            JobCompletion::Panicked(e.into_panic())
+        } else if e.is_cancelled() {
+            JobCompletion::Cancelled
+        } else {
+            unreachable!()
+        });
 
-        // log that job has ended.
+        // log that job has ended
         tracing::debug!(
-            "  *** JobQueue: ended job #{} - {} - Completion: {} - {} secs ***",
+            "  *** JobQueue: ended job #{} - {} - Completion: {job_completion:?} - {} secs ***",
             job_num,
             next_job.job_id,
-            job_completion,
             timer.elapsed().as_secs_f32()
         );
         job_num += 1;
@@ -527,7 +518,7 @@ mod tests {
 
         type DoubleJobResult = JobResultWrapper<(u64, u64, Instant)>;
 
-        // represents a prover job.  implements Job.
+        /// Represents a prover job.  Implements Job.
         #[derive(Debug)]
         struct DoubleJob {
             data: u64,
@@ -575,8 +566,8 @@ mod tests {
         }
 
         // this test demonstrates/verifies that:
-        //  1. jobs are run in priority order, highest priority first.
-        //  2. when multiple jobs have the same priority, they run in FIFO order.
+        //  1. jobs are run in priority order, highest priority first
+        //  2. when multiple jobs have the same priority, they run in FIFO order
         pub(super) async fn run_jobs_by_priority(is_async: bool) -> anyhow::Result<()> {
             let start_of_test = Instant::now();
 
@@ -586,7 +577,7 @@ mod tests {
             let mut handles = vec![];
             let duration = std::time::Duration::from_millis(20);
 
-            // create 30 jobs, 10 at each priority level.
+            // create 30 jobs, 10 at each priority level
             for i in (1..10).rev() {
                 let job1 = DoubleJob {
                     data: i,
@@ -604,24 +595,24 @@ mod tests {
                     is_async,
                 };
 
-                // process job and print results.
+                // process job and print results
                 handles.push(job_queue.add_job_mut(job1, DoubleJobPriority::Low)?);
                 handles.push(job_queue.add_job_mut(job2, DoubleJobPriority::Medium)?);
                 handles.push(job_queue.add_job_mut(job3, DoubleJobPriority::High)?);
             }
 
-            // we can't know exact number of jobs in queue because it is already processing.
+            // we can't know exact number of jobs in queue because it is already processing
             assert!(job_queue.num_jobs() > 0);
             assert!(job_queue.num_queued_jobs() > 0);
 
-            // wait for all jobs to complete.
+            // wait for all jobs to complete
             let mut results = futures::future::join_all(handles).await;
 
             assert_eq!(0, job_queue.num_jobs());
             assert_eq!(0, job_queue.num_queued_jobs());
 
-            // the results are in the same order as handles passed to join_all.
-            // we sort them by the timestamp in job result, ascending.
+            /* the results are in the same order as handles passed to join_all */
+            /* we sort them by the timestamp in job result, ascending */
             results.sort_by(|a_completion, b_completion| {
                 let a = <&DoubleJobResult>::try_from(a_completion.as_ref().unwrap())
                     .unwrap()
@@ -656,8 +647,7 @@ mod tests {
             Ok(())
         }
 
-        // this test demonstrates/verifies that a job can return a result back to
-        // the job initiator.
+        /// this test demonstrates/verifies that a job can return a result back tothe job initiator.
         pub(super) async fn get_job_result(is_async: bool) -> anyhow::Result<()> {
             // create a job queue
             let mut job_queue = JobQueue::start();

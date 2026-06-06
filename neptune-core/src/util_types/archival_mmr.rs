@@ -234,8 +234,7 @@ impl<Storage: StorageVec<Digest>> ArchivalMmr<Storage> {
         }
     }
 
-    /// Return membership proof, as it looks relative to a smaller version of
-    /// the MMR which only has `num_leafs` leafs. `num_leafs` may not exceed
+    /// Return membership proof, as it looks relative to a smaller version of the MMR which only has `num_leafs` leafs. `num_leafs` may not exceed
     /// the actual number of leafs.
     pub(crate) async fn prove_membership_relative_to_smaller_mmr(
         &self,

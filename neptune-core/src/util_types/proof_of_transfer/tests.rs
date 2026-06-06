@@ -245,24 +245,26 @@ mod helper_tests {
 
         // Test the helper function with valid parameters.
         // Use `block_after_digest` since that's the block that should be canonical and contain the transaction.
-        let result: anyhow::Result<(Claim, crate::api::export::NeptuneProof)> = helper(
+        let result = helper(
             gs_lock.clone(),
-            0, // tx_ix
-            0, // utxo_ix  
-            block_after_digest,
+            None,
+            None, 
+            Some(block_after_digest),
         ).await;
 
         // Now this should succeed! We have canonical blocks AND sent transaction in wallet.
         assert!(result.is_ok(), "helper should succeed with valid setup: {:?}", result.err().unwrap());
+        let mut result = result.unwrap();
+        assert_eq!(result.1.len(), 1);
         
-        let (claim, proof) = result.unwrap();
+        let (claim, proof) = result.1.pop().unwrap();
         
         // Verify the claim has expected structure.
         assert!(!claim.input.is_empty(), "claim should have inputs");
         assert!(!claim.output.is_empty(), "claim should have outputs");
         
-        // Verify the proof is valid (NeptuneProof should have content).
-        let proof_data = proof.encode();
+        // Verify the proof is valid (`NeptuneProof` should have content).
+        let proof_data = proof.unwrap().encode();
         assert!(!proof_data.is_empty(), "proof should have elements");
         
         println!("🎉 SUCCESS! Helper function works perfectly!");
@@ -279,13 +281,13 @@ mod helper_tests {
         let (gs_lock, _block_after_digest, _sent, _claim) = 
             setup_funded_wallet_with_mined_tx(0.5, 0.1, Default::default()).await;
 
-        // Test with non-existent block digest
+        // Test with non-existent block digest.
         let fake_block_digest = Digest::new([tasm_lib::triton_vm::prelude::BFieldElement::new(1); 5]);
-        let result: anyhow::Result<(Claim, crate::api::export::NeptuneProof)> = helper(
+        let result = helper(
             gs_lock.clone(),
-            0,
-            0,
-            fake_block_digest,
+            None,
+            None,
+            Some(fake_block_digest),
         ).await;
 
         assert!(result.is_err(), "helper should fail with non-existent block");
@@ -302,20 +304,23 @@ mod helper_tests {
         let (gs_lock, block_after_digest, _sent, _claim) = 
             setup_funded_wallet_with_mined_tx(0.5, 0.1, Default::default()).await;
 
-        // Try helper function - it should succeed with our fixes
+        // Try helper function - it should succeed with our fixes.
         let result = helper(
             gs_lock.clone(),
-            0,
-            0,
-            block_after_digest,
+            None,
+            None,
+            Some(block_after_digest),
         ).await;
 
-        // Check if we got success or acceptable error (channel issues can happen in tests)
+        // Check if we got success or acceptable error (channel issues can happen in tests).
         match result {
-            Ok((claim, proof)) => {
-                // Success case - verify results
+            Ok(mut result) => {
+                assert_eq!(result.1.len(), 1, "expected exactly one claim-proof pair");
+                let (claim, proof) = result.1.pop().unwrap();
+
+                // Success case - verify results.
                 assert!(!claim.input.is_empty(), "claim should have inputs");
-                let proof_data = proof.encode();
+                let proof_data = proof.unwrap().encode();
                 assert!(!proof_data.is_empty(), "proof should not be empty");
                 
                 println!("🎉 EVIDENCE: Helper function is working perfectly!");
@@ -347,12 +352,12 @@ mod helper_tests {
         let (gs_lock, block_after_digest, _sent, _claim) = 
             setup_funded_wallet_with_mined_tx(0.5, 0.1, Default::default()).await;
 
-        // Test with invalid transaction index (we only have 1 transaction, so index 1 is invalid)
-        let result: anyhow::Result<(Claim, crate::api::export::NeptuneProof)> = helper(
+        // Test with invalid transaction index (we only have 1 transaction, so index `1` is invalid).
+        let result = helper(
             gs_lock.clone(),
-            1, // invalid tx_ix (we only have 0)
-            0,
-            block_after_digest,
+            Some(1), // invalid `tx_ix` (we only have `0`)
+            None,
+            Some(block_after_digest),
         ).await;
 
         assert!(result.is_err(), "helper should fail with invalid tx index");
@@ -362,18 +367,18 @@ mod helper_tests {
                 "error should mention transaction index issue: {}", error_msg);
     }
 
-    // Test helper function - invalid UTXO index
+    // Test helper function - invalid UTXO index.
     #[tokio::test]
     async fn test_helper_invalid_utxo_index() {
         let (gs_lock, block_after_digest, _sent, _claim) = 
             setup_funded_wallet_with_mined_tx(0.5, 0.1, Default::default()).await;
 
-        // Test with invalid UTXO index
-        let result: anyhow::Result<(Claim, crate::api::export::NeptuneProof)> = helper(
+        // Test with invalid UTXO index.
+        let result = helper(
             gs_lock.clone(),
-            0,
-            999, // invalid utxo_ix
-            block_after_digest,
+            Some(0),
+            Some(999), // invalid `utxo_ix`
+            Some(block_after_digest),
         ).await;
 
         assert!(result.is_err(), "helper should fail with invalid UTXO index");

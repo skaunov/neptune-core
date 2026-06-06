@@ -101,14 +101,17 @@ pub struct LastFileRecord {
 
 #[derive(Debug, Copy, Clone, Serialize, Deserialize)]
 pub enum BlockIndexKey {
-    Block(Digest),       // points to block headers and file locations
+    /// points to block headers and file locations
+    Block(Digest),       
     File(u32),           // points to file information
     Height(BlockHeight), // Maps from block height to list of blocks
     LastFile,            // points to last file used
 
-    // Tip-hash could also be fetched from archival block MMR instead. Maybe
-    // this key is superfluous?
-    BlockTipDigest, // points to block digest of most canonical block known
+    /// points to block digest of most canonical block known
+    /// 
+    /// Tip-hash could also be fetched from archival block MMR instead. Maybe
+    /// this key is superfluous?
+    BlockTipDigest, 
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

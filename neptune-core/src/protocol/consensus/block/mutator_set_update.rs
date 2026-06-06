@@ -91,8 +91,7 @@ impl MutatorSetUpdate {
         }
     }
 
-    /// Apply a mutator set update to a mutator set accumulator. Modifies the
-    /// mutator set according to the content of the mutator set update and
+    /// Apply a mutator set update to a mutator set accumulator. Modifies the mutator set according to the content of the mutator set update and
     /// returns a boolean indicating if all removal records were valid.
     ///
     /// If this boolean is false, then at least one removal record was invalid

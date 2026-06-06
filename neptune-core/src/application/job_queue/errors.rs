@@ -1,6 +1,6 @@
 use std::sync::Mutex;
 
-/// a job-handle error.
+/// a job-handle error
 #[derive(Debug, thiserror::Error)]
 pub enum JobHandleError {
     #[error("the job was cancelled")]
@@ -190,25 +190,25 @@ impl JobHandleError {
 }
 
 /// Holds panic information
-//
-// 1. The Box holds panic info as returned from tokio JoinError::into_panic()
-// 2. The Mutex makes the panic info `Sync`.
-// 3. PanicInfo makes the mutex private to guarantee lock() can never be called
-//    on it by code outside this module.
-// 4. lock() is never called inside this module.
-// 5. Since lock() is never called:
-//    a. the mutex can never be poisoned.
-//    b. Mutex::into_inner() is guaranteed to succeed.
-//
-// possible alternatives to Mutex:
-//
-// Mutex is only being used for `Sync` not for locking.
-//
-// other possible candidates are discussed here:
-// https://github.com/Neptune-Crypto/neptune-core/pull/584#discussion_r2086163632
-//
-// std::sync::Exclusive seems a better fit, but is not yet in stable rust as
-// of rust 1.86.0.
+///
+/// 1. The Box holds panic info as returned from tokio JoinError::into_panic()
+/// 2. The Mutex makes the panic info `Sync`.
+/// 3. PanicInfo makes the mutex private to guarantee lock() can never be called
+///    on it by code outside this module.
+/// 4. lock() is never called inside this module.
+/// 5. Since lock() is never called:
+///    a. the mutex can never be poisoned.
+///    b. Mutex::into_inner() is guaranteed to succeed.
+///
+/// possible alternatives to Mutex:
+///
+/// Mutex is only being used for `Sync` not for locking.
+///
+/// other possible candidates are discussed here:
+/// https://github.com/Neptune-Crypto/neptune-core/pull/584#discussion_r2086163632
+///
+/// `std::sync::Exclusive` seems a better fit, but is not yet in stable rust as
+/// of Rust `1.86.0`.
 #[derive(Debug)]
 pub struct PanicInfo(Mutex<Box<dyn std::any::Any + Send + 'static>>);
 
