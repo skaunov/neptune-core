@@ -240,7 +240,7 @@ impl<Storage: StorageVec<Digest>> ArchivalMmr<Storage> {
         &self,
         leaf_index: u64,
         num_leafs: u64,
-    ) -> MmrMembershipProof {
+    ) -> Result<MmrMembershipProof, tokio::task::JoinError> {
         // TODO: Replace this local function with the one in `twenty_first` once
         // available through never version.
         fn auth_path_node_indices(num_leafs: u64, leaf_index: u64) -> Vec<u64> {
@@ -281,12 +281,12 @@ impl<Storage: StorageVec<Digest>> ArchivalMmr<Storage> {
             "Cannot find membership proofs relative to bigger MMR"
         );
 
-        let node_indices = auth_path_node_indices(num_leafs, leaf_index);
+        let node_indices = tokio::task::spawn_blocking(move || auth_path_node_indices(num_leafs, leaf_index)).await?;
         let ap_elements = self.digests.get_many(&node_indices).await;
 
-        MmrMembershipProof {
+        Ok(MmrMembershipProof {
             authentication_path: ap_elements,
-        }
+        })
     }
 
     /// Return membership proof
@@ -780,7 +780,7 @@ pub(crate) mod tests {
                     mp,
                     archival
                         .prove_membership_relative_to_smaller_mmr(i, size)
-                        .await,
+                        .await.unwrap(),
                     "Two ways of getting MMRMPs must agree"
                 );
 

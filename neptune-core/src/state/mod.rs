@@ -3107,11 +3107,10 @@ impl GlobalState {
                 bail!("could not fetch indicated block pair");
             };
 
-            // Notice that the MMR membership proofs are relative to an MMR
-            // where the tip digest *has* been added. So it is not relative to
-            // the block MMR accumulator present in the tip block, as it only
-            // refers to its ancestors. Rather, it's relative to the block MMR
-            // accumulator present in the tip's child.
+            /* Notice that the MMR membership proofs are relative to an MMR
+            where the tip digest *has* been added. So it is not relative to the block MMR accumulator present in the tip block, as it only
+            refers to its ancestors. Rather, it's relative to the block MMR
+            accumulator present in the tip's child. */
             block_mmr_mps.push(
                 self.chain
                     .archival_state()
@@ -3121,7 +3120,7 @@ impl GlobalState {
                         child_height.into(),
                         tip_height.next().into(),
                     )
-                    .await,
+                    .await?,
             );
             block_pairs.push((
                 p.try_into()

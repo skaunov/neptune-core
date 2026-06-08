@@ -264,7 +264,7 @@ impl PeerLoopHandler {
 
         let mut ret = vec![];
         for block in blocks {
-            let mmr_mp = state
+            let Ok(mmr_mp) = state
                 .chain
                 .archival_state()
                 .archival_block_mmr
@@ -272,8 +272,7 @@ impl PeerLoopHandler {
                 .prove_membership_relative_to_smaller_mmr(
                     block.header().height.into(),
                     anchor.num_leafs(),
-                )
-                .await;
+                ).await else {return None};
             let block: TransferBlock = block.try_into().unwrap();
             ret.push((block, mmr_mp));
         }
@@ -283,8 +282,7 @@ impl PeerLoopHandler {
 
     /// Handle validation and send all blocks to the main task if they're all
     /// valid. Use with a list of blocks or a single block. When the
-    /// `received_blocks` is a list, the parent of the `i+1`th block in the
-    /// list is the `i`th block. The parent of element zero in this list is
+    /// `received_blocks` is a list, the parent of the `i+1`th block in the list is the `i`th block. The parent of element zero in this list is
     /// `parent_of_first_block`.
     ///
     /// # Return Value
@@ -294,11 +292,9 @@ impl PeerLoopHandler {
     ///    are not syncing;
     ///  - `Ok(None)` if the last block has insufficient height and we are
     ///    syncing;
-    ///  - `Ok(Some(block_height))` otherwise, referring to the block with the
-    ///    highest height in the batch.
+    ///  - `Ok(Some(block_height))` otherwise, referring to the block with the highest height in the batch.
     ///
-    /// A return value of Ok(Some(_)) means that the message was passed on to
-    /// main loop.
+    /// A return value of Ok(Some(_)) means that the message was passed on to main loop.
     ///
     /// # Locking
     ///   * Acquires `global_state_lock` for write via `self.punish(..)` and
@@ -1332,7 +1328,8 @@ impl PeerLoopHandler {
 
                 let response = Self::batch_response(&state, returned_blocks, &anchor).await;
 
-                // issue 457. do not hold lock across a peer.send(), nor self.punish()
+                /* Issue 457. 
+                do not hold lock across a peer.send(), nor self.punish() */
                 drop(state);
 
                 let Some(response) = response else {
